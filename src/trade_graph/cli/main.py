@@ -4,6 +4,9 @@ from importlib.metadata import version as package_version
 
 import typer
 
+from trade_graph.cli.doctor import doctor
+from trade_graph.cli.init import init
+
 
 app = typer.Typer(add_completion=False)
 
@@ -18,9 +21,8 @@ def version() -> None:
     print(f"trade-graph {package_version('trade-graph')}")
 
 
-@app.command()
-def doctor() -> None:
-    print("doctor: pending")
+app.command()(doctor)
+app.command()(init)
 
 
 if __name__ == "__main__":
