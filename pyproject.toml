@@ -1,0 +1,28 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "trade-graph"
+version = "0.1.0"
+description = "CLI scaffold for trade-graph"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+  "typer>=0.12,<1",
+]
+
+[dependency-groups]
+dev = [
+  "pytest>=8.0,<9",
+  "ty==0.0.23",
+]
+
+[project.scripts]
+trade-graph = "trade_graph.cli.main:app"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/trade_graph"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
