@@ -1,0 +1,11 @@
+.venv/
+.pytest_cache/
+__pycache__/
+*.py[cod]
+
+infra/neo4j/data/*
+!infra/neo4j/data/.gitkeep
+infra/neo4j/logs/*
+!infra/neo4j/logs/.gitkeep
+infra/neo4j/plugins/*
+!infra/neo4j/plugins/.gitkeep
