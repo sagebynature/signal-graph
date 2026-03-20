@@ -91,7 +91,7 @@ rationale = "For a negative `export_control`, sector ETF exposure can move immed
 ## Common Verification Commands
 
 ```bash
-uv run pytest -v
+uv run python -m pytest -v
 uv run ty check
 uv run signal-graph doctor
 uv run signal-graph version
@@ -101,23 +101,12 @@ uv run signal-graph version
 
 ## Manual Smoke Test
 
+The full copy-pasteable smoke flow lives in [`docs/runbooks/runnable-smoke-test.md`](runnable-smoke-test.md). It uses command substitution to capture real ids, keeps `.signal-graph/` state in a fresh temp directory, and explicitly seeds the demo reference graph before ranking.
+
+If you want the short form from the repo root:
+
 ```bash
-uv run signal-graph init
-uv run signal-graph submit --text "TSMC cuts capex"
-uv run signal-graph normalize \
-  --raw-item raw-123 \
-  --event-type capex_cut \
-  --direction negative \
-  --primary-entity TSMC
-uv run signal-graph research --event-candidate evt-123 --bundle-file bundle.json
-uv run signal-graph ingest --event-candidate evt-123
-uv run signal-graph rank --event ge-123
-uv run signal-graph explain --event ge-123 --candidate SMH
-```
-
-Example `bundle.json`:
-
-```json
+cat > bundle.json <<'JSON'
 {
   "supporting_documents": ["https://example.com/tsmc-capex"],
   "contradictions": ["Demand recovery may offset the capex cut."],
@@ -126,14 +115,34 @@ Example `bundle.json`:
   "research_confidence": 0.7,
   "research_notes": "Capex cuts often pressure semiconductor equipment demand."
 }
+JSON
+uv run signal-graph init
+uv run python - <<'PY'
+from signal_graph.graph.client import GraphClient
+from signal_graph.graph.schema import demo_reference_graph_statements
+
+client = GraphClient()
+try:
+    client.run_in_transaction(demo_reference_graph_statements())
+finally:
+    client.close()
+PY
+raw_item_id=$(uv run signal-graph submit --text "TSMC cuts capex" | uv run python -c 'import json,sys; print(json.load(sys.stdin)["raw_item_id"])')
+event_candidate_id=$(uv run signal-graph normalize --raw-item "$raw_item_id" --event-type capex_cut --direction negative --primary-entity TSMC | uv run python -c 'import json,sys; print(json.load(sys.stdin)["event_candidate_id"])')
+uv run signal-graph research --event-candidate "$event_candidate_id" --bundle-file bundle.json
+graph_event_id=$(uv run signal-graph ingest --event-candidate "$event_candidate_id" | uv run python -c 'import json,sys; print(json.load(sys.stdin)["graph_event_id"])')
+uv run signal-graph rank --event "$graph_event_id"
+uv run signal-graph explain --event "$graph_event_id" --candidate SMH
 ```
 
 Expected behavior:
 
-- `fetch` and `submit` persist raw items into SQLite
+- `fetch --source web` returns deterministic demo output today; it is not live web retrieval
+- `fetch --source premium` is currently a placeholder and returns no items
 - `research` fails on an empty bundle unless `--allow-empty` is set
-- `ingest` seeds the small semiconductor graph and writes the event plus provenance into Neo4j
-- `rank` returns JSON candidates with `relationship_path` and `reason_summary`
+- `ingest` updates the event graph transactionally but does not seed demo instruments automatically
+- `rank` returns JSON instrument candidates with `instrument_id`, `asset_kind`, `relationship_path`, and `reason_summary`
+- `rank` is only as broad as the instrument reference data already loaded into Neo4j
 - `explain` writes a markdown memo under `.signal-graph/artifacts/`
 - local scoring policy config can change rank order, timing windows, path descriptions, and memo rationale without code edits
 
@@ -151,6 +160,8 @@ Expected behavior:
 - `signal-graph doctor` fails: read the reported config or `NEO4J_AUTH` error first, then install any missing runtime tooling before debugging application code
 - Neo4j auth mismatch: either keep the existing password or reset the local data directory
 - Unexpected local state: inspect `.signal-graph/signal_graph.db` and `.signal-graph/artifacts/`
-- Rank output looks empty or weak: confirm your normalized event has `--primary-entity` data and that the entity exists in the seeded graph universe
+- Rank output looks empty or weak: confirm your normalized event has `--primary-entity` data and that tradable instrument reference data has been loaded into Neo4j
+- `fetch --source web` looks fake: that is expected today; it returns deterministic stub content from `example.com`
+- `fetch --source premium` returns nothing: that is expected until a real premium connector is implemented
 - Rank or memo behavior changed unexpectedly: inspect `.signal-graph/config.toml` and compare it with `docs/examples/scoring-policy.example.toml`
-- Smoke test drift: run `uv run pytest -v` first, then reproduce the failing CLI step manually
+- Smoke test drift: run `uv run python -m pytest -v` first, then reproduce the failing CLI step manually
