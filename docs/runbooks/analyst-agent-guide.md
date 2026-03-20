@@ -88,7 +88,7 @@ uv run signal-graph rank --event "$graph_event_id"
 uv run signal-graph explain --event "$graph_event_id" --candidate SMH
 ```
 
-`fetch --source premium` is a placeholder today and returns no items until implemented.
+`fetch --source premium` is disabled today and exits with a clear placeholder message until implemented.
 
 ## Research Bundle Shape
 
@@ -135,7 +135,7 @@ Reference example:
 ## Expected Outputs
 
 - `submit` returns persisted raw-source-item JSON with a stable `raw_item_id`
-- `fetch` returns a list of persisted raw-source-item JSON objects; `web` is demo output today and `premium` is placeholder-only
+- `fetch` returns a list of persisted raw-source-item JSON objects for `web`; `premium` is disabled until implemented
 - `normalize` returns an event candidate and supports `--event-type`, `--direction`, `--primary-entity`, and `--secondary-entity`
 - `research` returns a persisted research bundle keyed as `rb-<event_candidate_id>`
 - `ingest` writes the event, research bundle, source items, and resolved entities into Neo4j and returns a graph event record

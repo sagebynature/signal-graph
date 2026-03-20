@@ -124,7 +124,7 @@ For a fully isolated, copy-pasteable smoke path that keeps state in a temp direc
 ### Connector Reality
 
 - `fetch --source web` currently returns a deterministic demo item backed by `example.com`; it is not live public-web retrieval.
-- `fetch --source premium` is a placeholder and currently returns no items.
+- `fetch --source premium` is currently disabled and exits with a clear placeholder message.
 - The seeded demo ranking universe is intentionally small: `TSMC`, `NVDA`, `AMD`, `ASML`, `INTC`, `SMH`, and `SOXX`.
 
 ### Customizing Scoring Policy

@@ -138,7 +138,7 @@ uv run signal-graph explain --event "$graph_event_id" --candidate SMH
 Expected behavior:
 
 - `fetch --source web` returns deterministic demo output today; it is not live web retrieval
-- `fetch --source premium` is currently a placeholder and returns no items
+- `fetch --source premium` is currently disabled and exits with a clear placeholder message
 - `research` fails on an empty bundle unless `--allow-empty` is set
 - `ingest` updates the event graph transactionally but does not seed demo instruments automatically
 - `rank` returns JSON instrument candidates with `instrument_id`, `asset_kind`, `relationship_path`, and `reason_summary`
@@ -162,6 +162,6 @@ Expected behavior:
 - Unexpected local state: inspect `.signal-graph/signal_graph.db` and `.signal-graph/artifacts/`
 - Rank output looks empty or weak: confirm your normalized event has `--primary-entity` data and that tradable instrument reference data has been loaded into Neo4j
 - `fetch --source web` looks fake: that is expected today; it returns deterministic stub content from `example.com`
-- `fetch --source premium` returns nothing: that is expected until a real premium connector is implemented
+- `fetch --source premium` exits immediately: that is expected until a real premium connector is implemented
 - Rank or memo behavior changed unexpectedly: inspect `.signal-graph/config.toml` and compare it with `docs/examples/scoring-policy.example.toml`
 - Smoke test drift: run `uv run python -m pytest -v` first, then reproduce the failing CLI step manually

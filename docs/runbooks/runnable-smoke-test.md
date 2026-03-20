@@ -7,7 +7,7 @@ It keeps `.signal-graph/` state out of the repo checkout by using `uv run --proj
 ## Reality Check
 
 - `fetch --source web` is currently a deterministic demo stub backed by `example.com`, not live public-web retrieval.
-- `fetch --source premium` is a placeholder and currently returns no items.
+- `fetch --source premium` is currently disabled and exits with a clear placeholder message.
 - `rank` only returns tradable instruments already present in Neo4j. This smoke test explicitly loads the small demo reference universe before ranking.
 
 ## Manual Event Flow

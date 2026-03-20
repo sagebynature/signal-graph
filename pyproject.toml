@@ -29,3 +29,6 @@ packages = ["src/signal_graph"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+  "integration: requires a live Neo4j instance or CI compose environment",
+]

@@ -34,7 +34,15 @@ def _seed_demo_reference_graph() -> None:
         client.close()
 
 
-def _write_bundle_file(tmp_path: Path) -> Path:
+@pytest.mark.integration
+@_SKIP_IF_NO_INTEGRATION_ENV
+def test_compose_backed_flow(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+
+    runner = CliRunner()
+    assert runner.invoke(app, ["init"]).exit_code == 0
+    _seed_demo_reference_graph()
+
     bundle_path = tmp_path / "bundle.json"
     bundle_path.write_text(
         json.dumps(
@@ -45,15 +53,7 @@ def _write_bundle_file(tmp_path: Path) -> Path:
             }
         )
     )
-    return bundle_path
 
-
-def _run_manual_flow(tmp_path: Path, monkeypatch) -> tuple[CliRunner, str]:
-    monkeypatch.chdir(tmp_path)
-
-    runner = CliRunner()
-    assert runner.invoke(app, ["init"]).exit_code == 0
-    _seed_demo_reference_graph()
     submit = runner.invoke(app, ["submit", "--text", "TSMC cuts capex"])
     raw_item_id = json.loads(submit.stdout)["raw_item_id"]
     normalized = runner.invoke(
@@ -71,7 +71,6 @@ def _run_manual_flow(tmp_path: Path, monkeypatch) -> tuple[CliRunner, str]:
         ],
     )
     event_candidate_id = json.loads(normalized.stdout)["event_candidate_id"]
-    bundle_path = _write_bundle_file(tmp_path)
     assert (
         runner.invoke(
             app,
@@ -85,20 +84,22 @@ def _run_manual_flow(tmp_path: Path, monkeypatch) -> tuple[CliRunner, str]:
         ).exit_code
         == 0
     )
+
     ingested = runner.invoke(app, ["ingest", "--event-candidate", event_candidate_id])
+    assert ingested.exit_code == 0
     graph_event_id = json.loads(ingested.stdout)["graph_event_id"]
-    return runner, graph_event_id
 
+    ranked = runner.invoke(app, ["rank", "--event", graph_event_id])
+    assert ranked.exit_code == 0
+    ranked_candidates = json.loads(ranked.stdout)
+    assert any(candidate["ticker"] == "SMH" for candidate in ranked_candidates)
+    assert all(
+        candidate["asset_kind"] in {"equity", "etf"} for candidate in ranked_candidates
+    )
 
-@pytest.mark.integration
-@_SKIP_IF_NO_INTEGRATION_ENV
-def test_manual_event_flow(tmp_path, monkeypatch):
-    runner, graph_event_id = _run_manual_flow(tmp_path, monkeypatch)
-
-    rank_result = runner.invoke(app, ["rank", "--event", graph_event_id])
-    assert rank_result.exit_code == 0
-    explain_result = runner.invoke(
+    explained = runner.invoke(
         app, ["explain", "--event", graph_event_id, "--candidate", "SMH"]
     )
-    assert explain_result.exit_code == 0
+    assert explained.exit_code == 0
+    assert "Confirmed fact: Event `TSMC cuts capex`" in explained.stdout
     assert Path(".signal-graph/artifacts").is_dir()
