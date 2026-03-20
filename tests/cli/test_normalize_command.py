@@ -4,7 +4,7 @@ import json
 
 from typer.testing import CliRunner
 
-from trade_graph.cli.main import app
+from signal_graph.cli.main import app
 
 
 def test_normalize_creates_event_candidate(tmp_path, monkeypatch):

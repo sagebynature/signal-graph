@@ -65,22 +65,22 @@ Neo4j should not be the system of record for every artifact. It should be the re
 
 ### Primary Interface: CLI
 
-The assistant should be installed as a local command-line tool with a stable entrypoint such as `trade-graph`.
+The assistant should be installed as a local command-line tool with a stable entrypoint such as `signal-graph`.
 
 Example commands:
 
-- `trade-graph doctor`
-- `trade-graph init`
-- `trade-graph fetch --source premium --since 5m`
-- `trade-graph fetch --source web --query "semiconductor guidance cut"`
-- `trade-graph submit --stdin`
-- `trade-graph normalize --raw-item <id>`
-- `trade-graph research --event-candidate <id>`
-- `trade-graph ingest --event-candidate <id>`
-- `trade-graph rank --event <id>`
-- `trade-graph explain --event <id> --candidate SMH`
-- `trade-graph review --queue pending`
-- `trade-graph audit --event <id>`
+- `signal-graph doctor`
+- `signal-graph init`
+- `signal-graph fetch --source premium --since 5m`
+- `signal-graph fetch --source web --query "semiconductor guidance cut"`
+- `signal-graph submit --stdin`
+- `signal-graph normalize --raw-item <id>`
+- `signal-graph research --event-candidate <id>`
+- `signal-graph ingest --event-candidate <id>`
+- `signal-graph rank --event <id>`
+- `signal-graph explain --event <id> --candidate SMH`
+- `signal-graph review --queue pending`
+- `signal-graph audit --event <id>`
 
 ### Local Development Tooling
 

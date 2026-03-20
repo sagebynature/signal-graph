@@ -6,7 +6,7 @@ from pathlib import Path
 
 from typer.testing import CliRunner
 
-from trade_graph.cli.main import app
+from signal_graph.cli.main import app
 
 
 def test_research_creates_bundle_for_event_candidate(tmp_path, monkeypatch):
@@ -39,7 +39,7 @@ def test_research_persists_bundle_for_event_candidate(tmp_path, monkeypatch):
 
     assert result.exit_code == 0
     research_bundle = json.loads(result.stdout)
-    database_path = Path(".trade-graph/trade_graph.db")
+    database_path = Path(".signal-graph/signal_graph.db")
 
     with sqlite3.connect(database_path) as connection:
         row = connection.execute(

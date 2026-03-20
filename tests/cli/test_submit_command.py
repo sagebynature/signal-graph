@@ -6,7 +6,7 @@ from pathlib import Path
 
 from typer.testing import CliRunner
 
-from trade_graph.cli.main import app
+from signal_graph.cli.main import app
 
 
 def test_submit_stores_manual_raw_item(monkeypatch, tmp_path):
@@ -30,7 +30,7 @@ def test_submit_persists_raw_item_to_sqlite(monkeypatch, tmp_path):
     assert result.exit_code == 0
 
     raw_item = json.loads(result.stdout)
-    database_path = Path(".trade-graph/trade_graph.db")
+    database_path = Path(".signal-graph/signal_graph.db")
 
     with sqlite3.connect(database_path) as connection:
         row = connection.execute(

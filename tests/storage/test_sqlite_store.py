@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import sqlite3
 
-from trade_graph.storage.sqlite import SqliteStore
+from signal_graph.storage.sqlite import SqliteStore
 
 
 def test_init_db_creates_canonical_pipeline_tables(tmp_path):
-    store = SqliteStore(tmp_path / "trade_graph.db")
+    store = SqliteStore(tmp_path / "signal_graph.db")
 
     store.init_db()
 
@@ -17,11 +17,11 @@ def test_init_db_creates_canonical_pipeline_tables(tmp_path):
 
 
 def test_init_db_adds_foreign_keys_for_related_event_tables(tmp_path):
-    store = SqliteStore(tmp_path / "trade_graph.db")
+    store = SqliteStore(tmp_path / "signal_graph.db")
 
     store.init_db()
 
-    with sqlite3.connect(tmp_path / "trade_graph.db") as connection:
+    with sqlite3.connect(tmp_path / "signal_graph.db") as connection:
         research_bundle_foreign_keys = connection.execute(
             "PRAGMA foreign_key_list(research_bundles)"
         ).fetchall()

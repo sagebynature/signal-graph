@@ -4,7 +4,7 @@ from pathlib import Path
 
 from typer.testing import CliRunner
 
-from trade_graph.cli.main import app
+from signal_graph.cli.main import app
 
 
 def test_init_creates_local_directories(monkeypatch, tmp_path):
@@ -14,6 +14,6 @@ def test_init_creates_local_directories(monkeypatch, tmp_path):
     result = runner.invoke(app, ["init"])
 
     assert result.exit_code == 0
-    assert Path(".trade-graph/cache").is_dir()
-    assert Path(".trade-graph/artifacts").is_dir()
-    assert Path(".trade-graph/trade_graph.db").is_file()
+    assert Path(".signal-graph/cache").is_dir()
+    assert Path(".signal-graph/artifacts").is_dir()
+    assert Path(".signal-graph/signal_graph.db").is_file()

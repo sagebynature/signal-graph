@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from trade_graph.models.events import EventCandidate
+from signal_graph.models.events import EventCandidate
 
 
 def test_event_candidate_defaults():

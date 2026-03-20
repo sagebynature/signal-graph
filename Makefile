@@ -7,7 +7,7 @@ typecheck:
 	uv run ty check
 
 doctor:
-	uv run trade-graph doctor
+	uv run signal-graph doctor
 
 neo4j-up:
 	mkdir -p infra/neo4j/data infra/neo4j/logs infra/neo4j/plugins

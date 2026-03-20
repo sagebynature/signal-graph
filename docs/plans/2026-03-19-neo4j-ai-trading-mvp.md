@@ -4,7 +4,7 @@
 
 **Goal:** Build a CLI-first trading research toolkit that ingests events from premium, public, and manual sources into a canonical event pipeline, stores provenance locally, uses Neo4j for propagation reasoning, and produces ranked candidates plus evidence-backed trade memos.
 
-**Architecture:** Implement a Python package with a `trade-graph` CLI, a local SQLite metadata store, a Neo4j graph client, and filesystem artifacts for cached documents and memo output. Use `uv` for environment and dependency management, `ty` for type checking, a top-level `Makefile` for common workflows, and a Docker-managed local Neo4j instance backed by bind-mounted host volumes. Keep the first cut terminal-native and agent-operable, with `SKILL.md` as the agent workflow contract and MCP deferred to a thin adapter later.
+**Architecture:** Implement a Python package with a `signal-graph` CLI, a local SQLite metadata store, a Neo4j graph client, and filesystem artifacts for cached documents and memo output. Use `uv` for environment and dependency management, `ty` for type checking, a top-level `Makefile` for common workflows, and a Docker-managed local Neo4j instance backed by bind-mounted host volumes. Keep the first cut terminal-native and agent-operable, with `SKILL.md` as the agent workflow contract and MCP deferred to a thin adapter later.
 
 **Tech Stack:** Python 3.12, uv, Typer, Pydantic, SQLite, Neo4j Python driver, Rich, pytest, ty, Docker, Make
 
@@ -16,9 +16,9 @@
 - Create: `pyproject.toml`
 - Create: `uv.lock`
 - Create: `Makefile`
-- Create: `src/trade_graph/__init__.py`
-- Create: `src/trade_graph/cli/__init__.py`
-- Create: `src/trade_graph/cli/main.py`
+- Create: `src/signal_graph/__init__.py`
+- Create: `src/signal_graph/cli/__init__.py`
+- Create: `src/signal_graph/cli/main.py`
 - Create: `tests/cli/test_version_command.py`
 - Create: `tests/cli/test_make_targets.py`
 - Create: `README.md`
@@ -28,20 +28,20 @@
 ```python
 from typer.testing import CliRunner
 
-from trade_graph.cli.main import app
+from signal_graph.cli.main import app
 
 
 def test_version_command_runs():
     runner = CliRunner()
     result = runner.invoke(app, ["version"])
     assert result.exit_code == 0
-    assert "trade-graph" in result.stdout
+    assert "signal-graph" in result.stdout
 ```
 
 **Step 2: Run test to verify it fails**
 
 Run: `pytest tests/cli/test_version_command.py -v`
-Expected: FAIL because `trade_graph.cli.main` does not exist yet
+Expected: FAIL because `signal_graph.cli.main` does not exist yet
 
 **Step 3: Write minimal package and CLI implementation**
 
@@ -53,14 +53,14 @@ app = typer.Typer()
 
 @app.command()
 def version() -> None:
-    print("trade-graph 0.1.0")
+    print("signal-graph 0.1.0")
 ```
 
 **Step 4: Add the console script entrypoint**
 
 ```toml
 [project.scripts]
-trade-graph = "trade_graph.cli.main:app"
+signal-graph = "signal_graph.cli.main:app"
 ```
 
 **Step 5: Add `Makefile` targets for the default workflows**
@@ -75,7 +75,7 @@ typecheck:
 	uv run ty check
 
 doctor:
-	uv run trade-graph doctor
+	uv run signal-graph doctor
 ```
 
 **Step 6: Run test to verify it passes**
@@ -87,25 +87,25 @@ Expected: PASS
 
 ```bash
 git add pyproject.toml src tests README.md
-git commit -m "feat: scaffold trade-graph cli package"
+git commit -m "feat: scaffold signal-graph cli package"
 ```
 
 ### Task 2: Add Config, Doctor, Init, And Toolchain Checks
 
 **Files:**
-- Create: `src/trade_graph/config.py`
-- Create: `src/trade_graph/cli/doctor.py`
-- Create: `src/trade_graph/cli/init.py`
+- Create: `src/signal_graph/config.py`
+- Create: `src/signal_graph/cli/doctor.py`
+- Create: `src/signal_graph/cli/init.py`
 - Create: `tests/cli/test_doctor_command.py`
 - Create: `tests/cli/test_init_command.py`
-- Modify: `src/trade_graph/cli/main.py`
+- Modify: `src/signal_graph/cli/main.py`
 
 **Step 1: Write the failing doctor test**
 
 ```python
 from typer.testing import CliRunner
 
-from trade_graph.cli.main import app
+from signal_graph.cli.main import app
 
 
 def test_doctor_reports_missing_config(tmp_path, monkeypatch):
@@ -125,7 +125,7 @@ Expected: FAIL because the command does not exist
 
 ```python
 def get_default_config_path() -> Path:
-    return Path(".trade-graph/config.toml")
+    return Path(".signal-graph/config.toml")
 
 
 def doctor() -> None:
@@ -151,8 +151,8 @@ checks = {
 
 ```python
 def init() -> None:
-    Path(".trade-graph/cache").mkdir(parents=True, exist_ok=True)
-    Path(".trade-graph/artifacts").mkdir(parents=True, exist_ok=True)
+    Path(".signal-graph/cache").mkdir(parents=True, exist_ok=True)
+    Path(".signal-graph/artifacts").mkdir(parents=True, exist_ok=True)
 ```
 
 **Step 6: Run tests to verify they pass**
@@ -202,7 +202,7 @@ Expected: FAIL because `docker-compose.yml` does not exist
 services:
   neo4j:
     image: neo4j:5
-    container_name: trade-graph-neo4j
+    container_name: signal-graph-neo4j
     ports:
       - "7474:7474"
       - "7687:7687"
@@ -237,19 +237,19 @@ git commit -m "feat: add dockerized neo4j runtime"
 ### Task 4: Create The Local Metadata Store
 
 **Files:**
-- Create: `src/trade_graph/storage/sqlite.py`
-- Create: `src/trade_graph/storage/schema.sql`
+- Create: `src/signal_graph/storage/sqlite.py`
+- Create: `src/signal_graph/storage/schema.sql`
 - Create: `tests/storage/test_sqlite_store.py`
-- Modify: `src/trade_graph/cli/init.py`
+- Modify: `src/signal_graph/cli/init.py`
 
 **Step 1: Write the failing storage test**
 
 ```python
-from trade_graph.storage.sqlite import SqliteStore
+from signal_graph.storage.sqlite import SqliteStore
 
 
 def test_init_db_creates_source_items_table(tmp_path):
-    store = SqliteStore(tmp_path / "trade_graph.db")
+    store = SqliteStore(tmp_path / "signal_graph.db")
     store.init_db()
     assert store.table_exists("raw_source_items")
 ```
@@ -297,16 +297,16 @@ git commit -m "feat: add local sqlite metadata store"
 ### Task 5: Define Canonical Domain Models
 
 **Files:**
-- Create: `src/trade_graph/models/source.py`
-- Create: `src/trade_graph/models/events.py`
-- Create: `src/trade_graph/models/research.py`
-- Create: `src/trade_graph/models/graph.py`
+- Create: `src/signal_graph/models/source.py`
+- Create: `src/signal_graph/models/events.py`
+- Create: `src/signal_graph/models/research.py`
+- Create: `src/signal_graph/models/graph.py`
 - Create: `tests/models/test_event_candidate.py`
 
 **Step 1: Write the failing model test**
 
 ```python
-from trade_graph.models.events import EventCandidate
+from signal_graph.models.events import EventCandidate
 
 
 def test_event_candidate_defaults():
@@ -361,17 +361,17 @@ git commit -m "feat: add canonical domain models"
 ### Task 6: Add Manual Submission And Raw Item Persistence
 
 **Files:**
-- Create: `src/trade_graph/cli/submit.py`
-- Create: `src/trade_graph/services/raw_items.py`
+- Create: `src/signal_graph/cli/submit.py`
+- Create: `src/signal_graph/services/raw_items.py`
 - Create: `tests/cli/test_submit_command.py`
-- Modify: `src/trade_graph/cli/main.py`
+- Modify: `src/signal_graph/cli/main.py`
 
 **Step 1: Write the failing submit test**
 
 ```python
 from typer.testing import CliRunner
 
-from trade_graph.cli.main import app
+from signal_graph.cli.main import app
 
 
 def test_submit_stores_manual_raw_item(tmp_path, monkeypatch):
@@ -424,18 +424,18 @@ git commit -m "feat: add manual event submission"
 ### Task 7: Add Normalization And Dedupe Commands
 
 **Files:**
-- Create: `src/trade_graph/cli/normalize.py`
-- Create: `src/trade_graph/services/normalize.py`
+- Create: `src/signal_graph/cli/normalize.py`
+- Create: `src/signal_graph/services/normalize.py`
 - Create: `tests/cli/test_normalize_command.py`
-- Modify: `src/trade_graph/models/events.py`
-- Modify: `src/trade_graph/storage/sqlite.py`
+- Modify: `src/signal_graph/models/events.py`
+- Modify: `src/signal_graph/storage/sqlite.py`
 
 **Step 1: Write the failing normalize test**
 
 ```python
 from typer.testing import CliRunner
 
-from trade_graph.cli.main import app
+from signal_graph.cli.main import app
 
 
 def test_normalize_creates_event_candidate(tmp_path, monkeypatch):
@@ -488,19 +488,19 @@ git commit -m "feat: add normalization and dedupe pipeline"
 ### Task 8: Add Public Connector And Premium Connector Interface
 
 **Files:**
-- Create: `src/trade_graph/connectors/base.py`
-- Create: `src/trade_graph/connectors/public_web.py`
-- Create: `src/trade_graph/connectors/premium_stub.py`
-- Create: `src/trade_graph/cli/fetch.py`
+- Create: `src/signal_graph/connectors/base.py`
+- Create: `src/signal_graph/connectors/public_web.py`
+- Create: `src/signal_graph/connectors/premium_stub.py`
+- Create: `src/signal_graph/cli/fetch.py`
 - Create: `tests/cli/test_fetch_command.py`
-- Modify: `src/trade_graph/cli/main.py`
+- Modify: `src/signal_graph/cli/main.py`
 
 **Step 1: Write the failing fetch test**
 
 ```python
 from typer.testing import CliRunner
 
-from trade_graph.cli.main import app
+from signal_graph.cli.main import app
 
 
 def test_fetch_web_returns_raw_items(tmp_path, monkeypatch):
@@ -553,18 +553,18 @@ git commit -m "feat: add connector interfaces and fetch command"
 ### Task 9: Add Research Bundles And Provenance Rules
 
 **Files:**
-- Create: `src/trade_graph/cli/research.py`
-- Create: `src/trade_graph/services/research.py`
+- Create: `src/signal_graph/cli/research.py`
+- Create: `src/signal_graph/services/research.py`
 - Create: `tests/cli/test_research_command.py`
-- Modify: `src/trade_graph/models/research.py`
-- Modify: `src/trade_graph/storage/sqlite.py`
+- Modify: `src/signal_graph/models/research.py`
+- Modify: `src/signal_graph/storage/sqlite.py`
 
 **Step 1: Write the failing research test**
 
 ```python
 from typer.testing import CliRunner
 
-from trade_graph.cli.main import app
+from signal_graph.cli.main import app
 
 
 def test_research_creates_bundle_for_event_candidate(tmp_path, monkeypatch):
@@ -619,18 +619,18 @@ git commit -m "feat: add research bundle workflow"
 ### Task 10: Add Neo4j Schema And Ingest Command
 
 **Files:**
-- Create: `src/trade_graph/graph/client.py`
-- Create: `src/trade_graph/graph/schema.py`
-- Create: `src/trade_graph/cli/ingest.py`
+- Create: `src/signal_graph/graph/client.py`
+- Create: `src/signal_graph/graph/schema.py`
+- Create: `src/signal_graph/cli/ingest.py`
 - Create: `tests/cli/test_ingest_command.py`
-- Modify: `src/trade_graph/storage/sqlite.py`
+- Modify: `src/signal_graph/storage/sqlite.py`
 
 **Step 1: Write the failing ingest test**
 
 ```python
 from typer.testing import CliRunner
 
-from trade_graph.cli.main import app
+from signal_graph.cli.main import app
 
 
 def test_ingest_creates_graph_event_record(tmp_path, monkeypatch):
@@ -686,18 +686,18 @@ git commit -m "feat: add neo4j ingest workflow"
 ### Task 11: Add Ranking And Timing Windows
 
 **Files:**
-- Create: `src/trade_graph/cli/rank.py`
-- Create: `src/trade_graph/services/rank.py`
-- Create: `src/trade_graph/services/timing.py`
+- Create: `src/signal_graph/cli/rank.py`
+- Create: `src/signal_graph/services/rank.py`
+- Create: `src/signal_graph/services/timing.py`
 - Create: `tests/cli/test_rank_command.py`
-- Modify: `src/trade_graph/models/graph.py`
+- Modify: `src/signal_graph/models/graph.py`
 
 **Step 1: Write the failing ranking test**
 
 ```python
 from typer.testing import CliRunner
 
-from trade_graph.cli.main import app
+from signal_graph.cli.main import app
 
 
 def test_rank_returns_candidates_with_scores(tmp_path, monkeypatch):
@@ -758,17 +758,17 @@ git commit -m "feat: add ranking and timing windows"
 ### Task 12: Add Explain Command And Markdown Memo Output
 
 **Files:**
-- Create: `src/trade_graph/cli/explain.py`
-- Create: `src/trade_graph/services/explain.py`
+- Create: `src/signal_graph/cli/explain.py`
+- Create: `src/signal_graph/services/explain.py`
 - Create: `tests/cli/test_explain_command.py`
-- Modify: `src/trade_graph/models/graph.py`
+- Modify: `src/signal_graph/models/graph.py`
 
 **Step 1: Write the failing explain test**
 
 ```python
 from typer.testing import CliRunner
 
-from trade_graph.cli.main import app
+from signal_graph.cli.main import app
 
 
 def test_explain_outputs_memo_sections(tmp_path, monkeypatch):
@@ -799,7 +799,7 @@ def explain_candidate(graph_event_id: str, ticker: str) -> str:
     )
 ```
 
-**Step 4: Write memo output to `.trade-graph/artifacts/`**
+**Step 4: Write memo output to `.signal-graph/artifacts/`**
 
 ```python
 artifact_path.write_text(memo_text)
@@ -820,7 +820,7 @@ git commit -m "feat: add explain command and memo artifacts"
 ### Task 13: Add `SKILL.md` And Agent Usage Docs
 
 **Files:**
-- Create: `skills/trade-graph/SKILL.md`
+- Create: `skills/signal-graph/SKILL.md`
 - Create: `docs/runbooks/agent-usage.md`
 - Create: `tests/docs/test_skill_references.py`
 - Modify: `README.md`
@@ -832,7 +832,7 @@ from pathlib import Path
 
 
 def test_skill_mentions_provenance_and_command_order():
-    text = Path("skills/trade-graph/SKILL.md").read_text()
+    text = Path("skills/signal-graph/SKILL.md").read_text()
     assert "provenance" in text.lower()
     assert "normalize" in text.lower()
     assert "research" in text.lower()
@@ -856,12 +856,12 @@ Expected: FAIL because the file does not exist
 **Step 4: Add agent runbook examples for Codex and Claude Code**
 
 ```md
-trade-graph submit --text "TSMC cuts capex"
-trade-graph normalize --raw-item raw-123
-trade-graph research --event-candidate evt-123
-trade-graph ingest --event-candidate evt-123
-trade-graph rank --event ge-123
-trade-graph explain --event ge-123 --candidate SMH
+signal-graph submit --text "TSMC cuts capex"
+signal-graph normalize --raw-item raw-123
+signal-graph research --event-candidate evt-123
+signal-graph ingest --event-candidate evt-123
+signal-graph rank --event ge-123
+signal-graph explain --event ge-123 --candidate SMH
 ```
 
 **Step 5: Run test to verify it passes**
@@ -888,7 +888,7 @@ git commit -m "docs: add agent skill and usage guide"
 ```python
 from typer.testing import CliRunner
 
-from trade_graph.cli.main import app
+from signal_graph.cli.main import app
 
 
 def test_manual_event_flow(tmp_path, monkeypatch):
@@ -915,8 +915,8 @@ Expected: FAIL until the full CLI flow is wired together
 
 ```md
 pytest -v
-trade-graph doctor
-trade-graph init
+signal-graph doctor
+signal-graph init
 ```
 
 **Step 4: Run full verification**
@@ -929,10 +929,10 @@ Expected: PASS
 Run: `uv run ty check`
 Expected: PASS
 
-Run: `trade-graph version`
+Run: `signal-graph version`
 Expected: prints the package version
 
-Run: `uv run trade-graph doctor`
+Run: `uv run signal-graph doctor`
 Expected: prints config and environment checks
 
 **Step 6: Commit**

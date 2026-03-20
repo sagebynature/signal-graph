@@ -5,7 +5,7 @@ from pathlib import Path
 
 from typer.testing import CliRunner
 
-from trade_graph.cli.main import app
+from signal_graph.cli.main import app
 
 
 def test_manual_event_flow(tmp_path, monkeypatch):
@@ -25,4 +25,4 @@ def test_manual_event_flow(tmp_path, monkeypatch):
         runner.invoke(app, ["explain", "--event", graph_event_id, "--candidate", "SMH"]).exit_code
         == 0
     )
-    assert Path(".trade-graph/artifacts").is_dir()
+    assert Path(".signal-graph/artifacts").is_dir()

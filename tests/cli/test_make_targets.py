@@ -8,7 +8,7 @@ def test_makefile_has_minimal_task_targets():
     for target, expected in (
         ("test", "uv run pytest"),
         ("typecheck", "uv run ty check"),
-        ("doctor", "uv run trade-graph doctor"),
+        ("doctor", "uv run signal-graph doctor"),
         (
             "neo4j-up",
             "mkdir -p infra/neo4j/data infra/neo4j/logs infra/neo4j/plugins",
