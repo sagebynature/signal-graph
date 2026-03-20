@@ -58,9 +58,12 @@ uv run signal-graph init
 uv run signal-graph version
 ```
 
+`signal-graph doctor` is non-destructive. It checks runtime readiness for the local workflow, verifies that `.signal-graph/config.toml` is parseable when present, and rejects malformed `NEO4J_AUTH` values. The config file is optional.
+
 ### Local Neo4j
 
 - Set `NEO4J_AUTH` before the first `make neo4j-up` if you want a non-default `neo4j/<password>` credential.
+- `NEO4J_AUTH` must use the `username/password` format with non-empty values.
 - If you change `NEO4J_AUTH` later, remove `./infra/neo4j/data` first or keep using the existing password.
 - Removing `./infra/neo4j/data` also deletes your persisted local Neo4j data.
 - Authless mode such as `NEO4J_AUTH=none` is not part of this bootstrap setup.
@@ -106,7 +109,7 @@ Example `bundle.json`:
 
 ### Customizing Scoring Policy
 
-Scoring policy can be customized locally in `.signal-graph/config.toml`. The system keeps its built-in defaults, then merges local overrides by exact match:
+Scoring policy can be customized locally in `.signal-graph/config.toml`. The file is optional. When present, it must be valid TOML; malformed or unreadable config fails fast with a clear error instead of being silently ignored. The system keeps its built-in defaults, then merges local overrides by exact match:
 
 - path rule match key: `relationship_path`
 - event override match key: `event_type + direction + relationship_path`
@@ -129,7 +132,7 @@ timing_window = "immediate"
 rationale = "For a negative `export_control`, sector ETF exposure can move immediately."
 ```
 
-Use the full example file at `docs/examples/scoring-policy.example.toml` as the copyable reference. Malformed scoring policy config fails fast with a clear error instead of being silently ignored.
+Use the full example file at `docs/examples/scoring-policy.example.toml` as the copyable reference.
 
 ## Documentation Map
 
@@ -183,3 +186,5 @@ uv run ty check
 uv run signal-graph doctor
 uv run signal-graph version
 ```
+
+`uv run ty check` remains a contributor verification step. `signal-graph doctor` does not require `ty` to be installed.

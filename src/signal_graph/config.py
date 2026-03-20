@@ -20,8 +20,12 @@ def load_config(path: Path | None = None) -> dict[str, Any] | None:
     try:
         with config_path.open("rb") as file:
             return tomllib.load(file)
-    except (OSError, tomllib.TOMLDecodeError):
-        return None
+    except tomllib.TOMLDecodeError as exc:
+        message = f"Invalid config TOML at {config_path}: {exc}"
+        raise ValueError(message) from exc
+    except OSError as exc:
+        message = f"Unable to read config at {config_path}: {exc}"
+        raise ValueError(message) from exc
 
 
 def get_scoring_policy_config() -> dict[str, Any] | None:
@@ -38,7 +42,12 @@ def get_neo4j_config() -> dict[str, str]:
 
     auth_value = os.getenv("NEO4J_AUTH")
     if auth_value:
-        username, _, password = auth_value.partition("/")
+        username, separator, password = auth_value.partition("/")
+        if separator != "/" or not username or not password:
+            message = (
+                "NEO4J_AUTH must use username/password format with non-empty values"
+            )
+            raise ValueError(message)
     else:
         username = os.getenv(
             "NEO4J_USERNAME", str(neo4j_config.get("username", "neo4j"))

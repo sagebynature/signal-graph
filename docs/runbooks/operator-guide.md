@@ -6,7 +6,7 @@ This guide is for developers and local operators working inside the repository.
 
 - Python 3.12
 - `uv` for dependency and command execution
-- `ty` for type checks
+- `ty` for contributor type checks
 - Docker for the local Neo4j runtime
 - `make` for common workflows
 
@@ -18,6 +18,8 @@ uv run signal-graph doctor
 uv run signal-graph init
 uv run signal-graph version
 ```
+
+`signal-graph doctor` is non-destructive. It validates runtime readiness for the local workflow, confirms `.signal-graph/config.toml` is parseable when present, and rejects malformed `NEO4J_AUTH` values. The config file itself is optional.
 
 ## Neo4j Runtime
 
@@ -34,12 +36,14 @@ Operational notes:
 - wait for the container to become `healthy` before connecting
 - `./infra/neo4j/data` holds persisted database state
 - removing `./infra/neo4j/data` also removes local graph state
+- `NEO4J_AUTH` must use the `username/password` format with non-empty values
 - if you change `NEO4J_AUTH`, you may need to clear `./infra/neo4j/data` or keep using the existing password
 - runtime config is loaded from `.signal-graph/config.toml` when present and can be overridden with `NEO4J_URI`, `NEO4J_AUTH`, `NEO4J_USERNAME`, `NEO4J_PASSWORD`, and `NEO4J_DATABASE`
+- malformed or unreadable config fails fast in `signal-graph doctor` and any command that loads runtime config
 
 ## Scoring Policy Config
 
-Scoring policy overrides live in `.signal-graph/config.toml` under `[scoring_policy]`. The merge order is:
+Scoring policy overrides live in `.signal-graph/config.toml` under `[scoring_policy]`. The file is optional, but if it exists it must be valid TOML. The merge order is:
 
 1. built-in defaults from the repo
 2. local path overrides matched by `relationship_path`
@@ -93,6 +97,8 @@ uv run signal-graph doctor
 uv run signal-graph version
 ```
 
+`uv run ty check` is for contributors. `signal-graph doctor` only requires runtime tooling.
+
 ## Manual Smoke Test
 
 ```bash
@@ -142,7 +148,7 @@ Expected behavior:
 
 ## Troubleshooting
 
-- `signal-graph doctor` fails: install missing tooling before debugging application code
+- `signal-graph doctor` fails: read the reported config or `NEO4J_AUTH` error first, then install any missing runtime tooling before debugging application code
 - Neo4j auth mismatch: either keep the existing password or reset the local data directory
 - Unexpected local state: inspect `.signal-graph/signal_graph.db` and `.signal-graph/artifacts/`
 - Rank output looks empty or weak: confirm your normalized event has `--primary-entity` data and that the entity exists in the seeded graph universe
