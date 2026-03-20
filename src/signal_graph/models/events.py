@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 from pydantic import BaseModel, Field
 
 
@@ -14,3 +16,4 @@ class EventCandidate(BaseModel):
     source_item_ids: list[str] = Field(default_factory=list)
     candidate_confidence: float = 0.0
     candidate_status: str = "pending"
+    created_at: datetime | None = None

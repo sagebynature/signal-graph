@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 import json
 from pathlib import Path
 
@@ -31,16 +32,20 @@ def load_research_bundle_input(bundle_file: Path | None) -> ResearchBundleInput:
 def build_research_bundle(
     event: EventCandidate,
     bundle_input: ResearchBundleInput,
+    *,
+    bundle_revision: int,
 ) -> ResearchBundle:
     return ResearchBundle(
-        research_bundle_id=f"rb-{event.event_candidate_id}",
+        research_bundle_id=f"rb-{event.event_candidate_id}-r{bundle_revision:04d}",
         event_candidate_id=event.event_candidate_id,
+        bundle_revision=bundle_revision,
         supporting_documents=bundle_input.supporting_documents,
         contradictions=bundle_input.contradictions,
         entity_resolution_results=bundle_input.entity_resolution_results,
         evidence_spans=bundle_input.evidence_spans,
         research_confidence=bundle_input.research_confidence,
         research_notes=bundle_input.research_notes,
+        created_at=datetime.now(UTC),
     )
 
 
@@ -59,6 +64,10 @@ def build_and_persist_research_bundle(
     if materialized_bundle.is_empty() and not allow_empty:
         raise ValueError("empty research bundle requires --allow-empty")
 
-    bundle = build_research_bundle(event_candidate, materialized_bundle)
+    bundle = build_research_bundle(
+        event_candidate,
+        materialized_bundle,
+        bundle_revision=store.next_research_bundle_revision(event_candidate_id),
+    )
     store.save_research_bundle(bundle)
     return bundle

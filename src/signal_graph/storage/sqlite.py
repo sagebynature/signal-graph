@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
+from hashlib import sha256
 import json
 import sqlite3
 from pathlib import Path
@@ -25,6 +26,7 @@ class SqliteStore:
         with self._connect() as connection:
             schema_sql = Path(__file__).with_name("schema.sql").read_text()
             connection.executescript(schema_sql)
+            self._apply_additive_migrations(connection)
 
     def table_exists(self, name: str) -> bool:
         with self._connect() as connection:
@@ -100,17 +102,19 @@ class SqliteStore:
         with self._connect() as connection:
             connection.execute(
                 """
-                INSERT OR REPLACE INTO event_candidates (
+                INSERT INTO event_candidates (
                     event_candidate_id,
                     title,
                     event_type,
                     direction,
                     primary_entities,
+                    dedupe_fingerprint,
                     secondary_entities,
                     source_item_ids,
                     candidate_confidence,
-                    candidate_status
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    candidate_status,
+                    created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     event_candidate.event_candidate_id,
@@ -118,10 +122,14 @@ class SqliteStore:
                     event_candidate.event_type,
                     event_candidate.direction,
                     json.dumps(event_candidate.primary_entities),
+                    event_candidate.dedupe_fingerprint,
                     json.dumps(event_candidate.secondary_entities),
                     json.dumps(event_candidate.source_item_ids),
                     event_candidate.candidate_confidence,
                     event_candidate.candidate_status,
+                    event_candidate.created_at.isoformat()
+                    if event_candidate.created_at is not None
+                    else datetime.now(UTC).isoformat(),
                 ),
             )
 
@@ -135,10 +143,12 @@ class SqliteStore:
                     event_type,
                     direction,
                     primary_entities,
+                    dedupe_fingerprint,
                     secondary_entities,
                     source_item_ids,
                     candidate_confidence,
-                    candidate_status
+                    candidate_status,
+                    created_at
                 FROM event_candidates
                 WHERE event_candidate_id = ?
                 """,
@@ -154,30 +164,35 @@ class SqliteStore:
             event_type=row[2],
             direction=row[3],
             primary_entities=json.loads(row[4]),
-            secondary_entities=json.loads(row[5]),
-            source_item_ids=json.loads(row[6]),
-            candidate_confidence=row[7],
-            candidate_status=row[8],
+            dedupe_fingerprint=row[5],
+            secondary_entities=json.loads(row[6]),
+            source_item_ids=json.loads(row[7]),
+            candidate_confidence=row[8],
+            candidate_status=row[9],
+            created_at=datetime.fromisoformat(row[10]) if row[10] else None,
         )
 
     def save_research_bundle(self, bundle: ResearchBundle) -> None:
         with self._connect() as connection:
             connection.execute(
                 """
-                INSERT OR REPLACE INTO research_bundles (
+                INSERT INTO research_bundles (
                     research_bundle_id,
                     event_candidate_id,
+                    bundle_revision,
                     supporting_documents,
                     contradictions,
                     entity_resolution_results,
                     evidence_spans,
                     research_confidence,
-                    research_notes
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    research_notes,
+                    created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     bundle.research_bundle_id,
                     bundle.event_candidate_id,
+                    bundle.bundle_revision,
                     json.dumps(bundle.supporting_documents),
                     json.dumps(bundle.contradictions),
                     json.dumps(bundle.entity_resolution_results)
@@ -186,24 +201,36 @@ class SqliteStore:
                     json.dumps(bundle.evidence_spans),
                     bundle.research_confidence,
                     bundle.research_notes,
+                    bundle.created_at.isoformat()
+                    if bundle.created_at is not None
+                    else datetime.now(UTC).isoformat(),
                 ),
             )
 
     def get_research_bundle(self, event_candidate_id: str) -> ResearchBundle | None:
+        return self.get_latest_research_bundle(event_candidate_id)
+
+    def get_latest_research_bundle(
+        self, event_candidate_id: str
+    ) -> ResearchBundle | None:
         with self._connect() as connection:
             row = connection.execute(
                 """
                 SELECT
                     research_bundle_id,
                     event_candidate_id,
+                    bundle_revision,
                     supporting_documents,
                     contradictions,
                     entity_resolution_results,
                     evidence_spans,
                     research_confidence,
-                    research_notes
+                    research_notes,
+                    created_at
                 FROM research_bundles
                 WHERE event_candidate_id = ?
+                ORDER BY bundle_revision DESC, created_at DESC, rowid DESC
+                LIMIT 1
                 """,
                 (event_candidate_id,),
             ).fetchone()
@@ -214,13 +241,28 @@ class SqliteStore:
         return ResearchBundle(
             research_bundle_id=row[0],
             event_candidate_id=row[1],
-            supporting_documents=json.loads(row[2]),
-            contradictions=json.loads(row[3]),
-            entity_resolution_results=json.loads(row[4]) if row[4] else None,
-            evidence_spans=json.loads(row[5]),
-            research_confidence=row[6],
-            research_notes=row[7],
+            bundle_revision=row[2] or 1,
+            supporting_documents=json.loads(row[3]),
+            contradictions=json.loads(row[4]),
+            entity_resolution_results=json.loads(row[5]) if row[5] else None,
+            evidence_spans=json.loads(row[6]),
+            research_confidence=row[7],
+            research_notes=row[8],
+            created_at=datetime.fromisoformat(row[9]) if row[9] else None,
         )
+
+    def next_research_bundle_revision(self, event_candidate_id: str) -> int:
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT COALESCE(MAX(bundle_revision), 0) + 1
+                FROM research_bundles
+                WHERE event_candidate_id = ?
+                """,
+                (event_candidate_id,),
+            ).fetchone()
+
+        return int(row[0]) if row is not None else 1
 
     def save_graph_event(self, graph_event: GraphEvent) -> None:
         with self._connect() as connection:
@@ -274,4 +316,86 @@ class SqliteStore:
             trust_score=row[3],
             eligible_modes=json.loads(row[4]),
             ingest_decision=row[5],
+        )
+
+    def _apply_additive_migrations(self, connection: sqlite3.Connection) -> None:
+        self._ensure_column(connection, "event_candidates", "dedupe_fingerprint TEXT")
+        self._ensure_column(connection, "event_candidates", "created_at TEXT")
+        self._ensure_column(connection, "research_bundles", "bundle_revision INTEGER")
+        self._ensure_column(connection, "research_bundles", "created_at TEXT")
+        connection.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_event_candidates_dedupe_fingerprint
+                ON event_candidates(dedupe_fingerprint)
+            """
+        )
+        connection.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_research_bundles_event_candidate_revision
+                ON research_bundles(event_candidate_id, bundle_revision DESC, created_at DESC)
+            """
+        )
+        self._backfill_event_candidate_provenance(connection)
+        self._backfill_research_bundle_provenance(connection)
+
+    def _ensure_column(
+        self, connection: sqlite3.Connection, table_name: str, column_definition: str
+    ) -> None:
+        column_name = column_definition.split()[0]
+        existing_columns = {
+            row[1] for row in connection.execute(f"PRAGMA table_info({table_name})")
+        }
+        if column_name in existing_columns:
+            return
+
+        connection.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_definition}")
+
+    def _backfill_event_candidate_provenance(
+        self, connection: sqlite3.Connection
+    ) -> None:
+        rows = connection.execute(
+            """
+            SELECT event_candidate_id, title
+            FROM event_candidates
+            WHERE dedupe_fingerprint IS NULL OR created_at IS NULL
+            """
+        ).fetchall()
+        for event_candidate_id, title in rows:
+            normalized_title = (title or "").strip().lower()
+            connection.execute(
+                """
+                UPDATE event_candidates
+                SET dedupe_fingerprint = COALESCE(dedupe_fingerprint, ?),
+                    created_at = COALESCE(created_at, ?)
+                WHERE event_candidate_id = ?
+                """,
+                (
+                    sha256(normalized_title.encode()).hexdigest(),
+                    datetime.now(UTC).isoformat(),
+                    event_candidate_id,
+                ),
+            )
+
+    def _backfill_research_bundle_provenance(
+        self, connection: sqlite3.Connection
+    ) -> None:
+        connection.execute(
+            """
+            UPDATE research_bundles
+            SET bundle_revision = (
+                SELECT COUNT(*)
+                FROM research_bundles AS prior_revisions
+                WHERE prior_revisions.event_candidate_id = research_bundles.event_candidate_id
+                  AND prior_revisions.rowid <= research_bundles.rowid
+            )
+            WHERE bundle_revision IS NULL
+            """
+        )
+        connection.execute(
+            """
+            UPDATE research_bundles
+            SET created_at = ?
+            WHERE created_at IS NULL
+            """,
+            (datetime.now(UTC).isoformat(),),
         )

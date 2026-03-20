@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 from pydantic import BaseModel, Field
 
 
@@ -26,9 +28,11 @@ class ResearchBundleInput(BaseModel):
 class ResearchBundle(BaseModel):
     research_bundle_id: str
     event_candidate_id: str
+    bundle_revision: int = 1
     supporting_documents: list[str] = Field(default_factory=list)
     contradictions: list[str] = Field(default_factory=list)
     entity_resolution_results: dict[str, str] | None = None
     evidence_spans: list[str] = Field(default_factory=list)
     research_confidence: float = 0.0
     research_notes: str | None = None
+    created_at: datetime | None = None

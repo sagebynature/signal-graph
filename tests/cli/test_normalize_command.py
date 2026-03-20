@@ -92,7 +92,9 @@ def test_normalize_accepts_event_overrides(tmp_path, monkeypatch):
     assert event_candidate["secondary_entities"] == ["SMH"]
 
 
-def test_normalize_dedupes_matching_titles(tmp_path, monkeypatch):
+def test_normalize_creates_distinct_event_candidates_for_matching_titles(
+    tmp_path, monkeypatch
+):
     monkeypatch.chdir(tmp_path)
 
     runner = CliRunner()
@@ -110,66 +112,38 @@ def test_normalize_dedupes_matching_titles(tmp_path, monkeypatch):
 
     assert first_normalize.exit_code == 0
     assert second_normalize.exit_code == 0
+    first_event_candidate = json.loads(first_normalize.stdout)
+    second_event_candidate = json.loads(second_normalize.stdout)
     assert (
-        json.loads(first_normalize.stdout)["event_candidate_id"]
-        == json.loads(second_normalize.stdout)["event_candidate_id"]
+        first_event_candidate["event_candidate_id"]
+        != second_event_candidate["event_candidate_id"]
     )
-
-
-def test_normalize_merges_source_item_ids_for_duplicate_events(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
-
-    runner = CliRunner()
-    runner.invoke(app, ["init"])
-    first_submit = runner.invoke(app, ["submit", "--text", "NVDA supplier disruption"])
-    second_submit = runner.invoke(app, ["submit", "--text", "NVDA supplier disruption"])
-
-    first_raw_item_id = json.loads(first_submit.stdout)["raw_item_id"]
-    second_raw_item_id = json.loads(second_submit.stdout)["raw_item_id"]
-
-    first_normalize = runner.invoke(
-        app,
-        [
-            "normalize",
-            "--raw-item",
-            first_raw_item_id,
-            "--event-type",
-            "supplier_disruption",
-            "--direction",
-            "negative",
-            "--primary-entity",
-            "NVDA",
-        ],
+    assert (
+        first_event_candidate["dedupe_fingerprint"]
+        == second_event_candidate["dedupe_fingerprint"]
     )
-    second_normalize = runner.invoke(
-        app, ["normalize", "--raw-item", second_raw_item_id]
-    )
-
-    assert first_normalize.exit_code == 0
-    assert second_normalize.exit_code == 0
-
-    event_candidate = json.loads(second_normalize.stdout)
-    assert sorted(event_candidate["source_item_ids"]) == sorted(
-        [first_raw_item_id, second_raw_item_id]
-    )
-    assert event_candidate["event_type"] == "supplier_disruption"
-    assert event_candidate["direction"] == "negative"
-    assert event_candidate["primary_entities"] == ["NVDA"]
+    assert first_event_candidate["source_item_ids"] == [first_raw_item_id]
+    assert second_event_candidate["source_item_ids"] == [second_raw_item_id]
 
     database_path = Path(".signal-graph/signal_graph.db")
     with sqlite3.connect(database_path) as connection:
-        row = connection.execute(
+        rows = connection.execute(
             """
-            SELECT source_item_ids, event_type, direction, primary_entities
+            SELECT event_candidate_id, dedupe_fingerprint, source_item_ids
             FROM event_candidates
-            WHERE event_candidate_id = ?
-            """,
-            (event_candidate["event_candidate_id"],),
-        ).fetchone()
+            ORDER BY created_at
+            """
+        ).fetchall()
 
-    assert row == (
-        json.dumps(sorted([first_raw_item_id, second_raw_item_id])),
-        "supplier_disruption",
-        "negative",
-        json.dumps(["NVDA"]),
-    )
+    assert rows == [
+        (
+            first_event_candidate["event_candidate_id"],
+            first_event_candidate["dedupe_fingerprint"],
+            json.dumps([first_raw_item_id]),
+        ),
+        (
+            second_event_candidate["event_candidate_id"],
+            second_event_candidate["dedupe_fingerprint"],
+            json.dumps([second_raw_item_id]),
+        ),
+    ]

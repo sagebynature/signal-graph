@@ -71,7 +71,7 @@ def test_research_creates_bundle_from_bundle_file(tmp_path, monkeypatch):
 
     assert result.exit_code == 0
     research_bundle = json.loads(result.stdout)
-    assert research_bundle["research_bundle_id"] == f"rb-{event_candidate_id}"
+    assert research_bundle["research_bundle_id"].startswith(f"rb-{event_candidate_id}-")
     assert research_bundle["supporting_documents"] == ["https://example.com/tsmc-capex"]
 
 
@@ -131,6 +131,83 @@ def test_research_persists_bundle_fields_for_event_candidate(tmp_path, monkeypat
     )
 
 
+def test_research_preserves_multiple_revisions_for_same_event_candidate(
+    tmp_path, monkeypatch
+):
+    monkeypatch.chdir(tmp_path)
+
+    runner = CliRunner()
+    runner.invoke(app, ["init"])
+    submit = runner.invoke(app, ["submit", "--text", "NVDA supplier disruption"])
+    raw_item_id = json.loads(submit.stdout)["raw_item_id"]
+    normalized = runner.invoke(app, ["normalize", "--raw-item", raw_item_id])
+    event_candidate_id = json.loads(normalized.stdout)["event_candidate_id"]
+    first_bundle_path = _write_bundle_file(tmp_path)
+    second_bundle_path = tmp_path / "bundle-revision-2.json"
+    second_bundle_path.write_text(
+        json.dumps(
+            {
+                "supporting_documents": ["https://example.com/tsmc-capex-revision-2"],
+                "contradictions": ["Supplier commentary softened the demand outlook."],
+                "entity_resolution_results": {"TSMC": "company:TSMC"},
+                "evidence_spans": ["Management revised the supplier forecast."],
+                "research_confidence": 0.8,
+                "research_notes": "Revision two keeps the earlier evidence but updates the conclusion.",
+            }
+        )
+    )
+
+    first_result = runner.invoke(
+        app,
+        [
+            "research",
+            "--event-candidate",
+            event_candidate_id,
+            "--bundle-file",
+            str(first_bundle_path),
+        ],
+    )
+    second_result = runner.invoke(
+        app,
+        [
+            "research",
+            "--event-candidate",
+            event_candidate_id,
+            "--bundle-file",
+            str(second_bundle_path),
+        ],
+    )
+
+    assert first_result.exit_code == 0
+    assert second_result.exit_code == 0
+
+    first_bundle = json.loads(first_result.stdout)
+    second_bundle = json.loads(second_result.stdout)
+    assert first_bundle["research_bundle_id"] != second_bundle["research_bundle_id"]
+
+    with sqlite3.connect(Path(".signal-graph/signal_graph.db")) as connection:
+        rows = connection.execute(
+            """
+            SELECT research_bundle_id, research_notes
+            FROM research_bundles
+            WHERE event_candidate_id = ?
+            ORDER BY bundle_revision
+            """,
+            (event_candidate_id,),
+        ).fetchall()
+
+    assert rows == [
+        (
+            first_bundle["research_bundle_id"],
+            "Capex cuts often pressure semiconductor equipment demand.",
+        ),
+        (
+            second_bundle["research_bundle_id"],
+            "Revision two keeps the earlier evidence but updates the conclusion.",
+        ),
+    ]
+
+
 def test_research_rejects_empty_bundle_without_allow_empty(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
 
@@ -175,7 +252,7 @@ def test_research_allows_empty_bundle_when_explicitly_requested(tmp_path, monkey
 
     assert result.exit_code == 0
     research_bundle = json.loads(result.stdout)
-    assert research_bundle["research_bundle_id"] == f"rb-{event_candidate_id}"
+    assert research_bundle["research_bundle_id"].startswith(f"rb-{event_candidate_id}-")
     assert research_bundle["supporting_documents"] == []
     assert research_bundle["contradictions"] == []
 
