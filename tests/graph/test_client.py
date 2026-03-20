@@ -11,6 +11,15 @@ class FakeRecord:
         return self._payload
 
 
+class FakeTransaction:
+    def __init__(self, calls: list[tuple]):
+        self.calls = calls
+
+    def run(self, query: str, params: dict) -> list[FakeRecord]:
+        self.calls.append(("tx.run", query, params))
+        return [FakeRecord({"value": params["value"]})]
+
+
 class FakeSession:
     def __init__(self, calls: list[tuple]):
         self.calls = calls
@@ -24,6 +33,10 @@ class FakeSession:
     def run(self, query: str, params: dict) -> list[FakeRecord]:
         self.calls.append(("run", query, params))
         return [FakeRecord({"value": params["value"]})]
+
+    def execute_write(self, work):
+        self.calls.append(("execute_write",))
+        return work(FakeTransaction(self.calls))
 
 
 class FakeDriver:
@@ -64,5 +77,39 @@ def test_graph_client_uses_driver_and_executes_query(monkeypatch):
         ("verify_connectivity",),
         ("session", "neo4j"),
         ("run", "RETURN $value AS value", {"value": 7}),
+        ("close",),
+    ]
+
+
+def test_graph_client_runs_statement_batches_in_one_transaction(monkeypatch):
+    calls: list[tuple] = []
+
+    class FakeGraphDatabase:
+        @staticmethod
+        def driver(uri: str, auth: tuple[str, str]) -> FakeDriver:
+            calls.append(("driver", uri, auth))
+            return FakeDriver(calls)
+
+    monkeypatch.setenv("NEO4J_URI", "neo4j://graph-host:7687")
+    monkeypatch.setenv("NEO4J_AUTH", "neo4j/password")
+    monkeypatch.setattr(client_module, "GraphDatabase", FakeGraphDatabase)
+
+    client = client_module.GraphClient()
+    rows = client.run_in_transaction(
+        [
+            ("RETURN $value AS value", {"value": 7}),
+            ("RETURN $value AS value", {"value": 11}),
+        ]
+    )
+    client.close()
+
+    assert rows == [[{"value": 7}], [{"value": 11}]]
+    assert calls == [
+        ("driver", "neo4j://graph-host:7687", ("neo4j", "password")),
+        ("verify_connectivity",),
+        ("session", "neo4j"),
+        ("execute_write",),
+        ("tx.run", "RETURN $value AS value", {"value": 7}),
+        ("tx.run", "RETURN $value AS value", {"value": 11}),
         ("close",),
     ]

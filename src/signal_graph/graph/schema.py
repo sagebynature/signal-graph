@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 SCHEMA_CONSTRAINTS = [
     "CREATE CONSTRAINT company_ticker IF NOT EXISTS FOR (c:Company) REQUIRE c.ticker IS UNIQUE",
     "CREATE CONSTRAINT instrument_ticker IF NOT EXISTS FOR (i:Instrument) REQUIRE i.ticker IS UNIQUE",
@@ -10,7 +12,7 @@ SCHEMA_CONSTRAINTS = [
 ]
 
 
-REFERENCE_GRAPH_QUERIES = [
+DEMO_REFERENCE_GRAPH_QUERIES = [
     "MERGE (c:Company {ticker: 'TSMC'}) SET c.name = 'Taiwan Semiconductor Manufacturing Company'",
     "MERGE (c:Company {ticker: 'NVDA'}) SET c.name = 'NVIDIA'",
     "MERGE (c:Company {ticker: 'AMD'}) SET c.name = 'Advanced Micro Devices'",
@@ -59,6 +61,12 @@ REFERENCE_GRAPH_QUERIES = [
         "MERGE (asml)-[:SUPPLIES]->(tsmc)"
     ),
 ]
+
+REFERENCE_GRAPH_QUERIES = DEMO_REFERENCE_GRAPH_QUERIES
+
+
+def demo_reference_graph_statements() -> list[tuple[str, dict[str, Any] | None]]:
+    return [(query, None) for query in DEMO_REFERENCE_GRAPH_QUERIES]
 
 
 def graph_event_query() -> str:
@@ -138,3 +146,13 @@ def graph_event_params(event_candidate, research_bundle) -> dict:
         "research_confidence": research_bundle.research_confidence,
         "research_notes": research_bundle.research_notes,
     }
+
+
+def graph_ingest_statements(
+    event_candidate, research_bundle
+) -> list[tuple[str, dict[str, Any] | None]]:
+    params = graph_event_params(event_candidate, research_bundle)
+    return [
+        (graph_cleanup_query(), params),
+        (graph_event_query(), params),
+    ]
