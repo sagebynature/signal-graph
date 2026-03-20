@@ -8,6 +8,13 @@ from signal_graph.models.graph import RankedCandidate
 from signal_graph.services.timing import classify_timing
 from signal_graph.storage.sqlite import SqliteStore
 
+PATH_BASE_SCORES: dict[tuple[str, ...], float] = {
+    ("DIRECT_ENTITY",): 0.7,
+    ("SUPPLIES",): 0.58,
+    ("HOLDS",): 0.5,
+    ("SUPPLIES", "HOLDS"): 0.38,
+}
+
 
 def _candidate_rows_query() -> str:
     return (
@@ -51,15 +58,7 @@ def _score_candidate(row: dict[str, Any]) -> RankedCandidate:
     evidence_count = int(row["evidence_count"])
     contradiction_count = int(row["contradiction_count"])
 
-    base_score = 0.2
-    if "DIRECT_ENTITY" in relationship_path:
-        base_score += 0.45
-    elif relationship_path == ["HOLDS"]:
-        base_score += 0.35
-    elif relationship_path == ["SUPPLIES"]:
-        base_score += 0.25
-    else:
-        base_score += 0.2
+    base_score = PATH_BASE_SCORES.get(tuple(relationship_path), 0.32)
 
     evidence_bonus = min(
         0.25,

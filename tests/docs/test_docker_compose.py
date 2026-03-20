@@ -1,6 +1,14 @@
 import os
-from pathlib import Path
 import subprocess
+from pathlib import Path
+
+
+def _assert_bind_mount_present(text: str, relative_path: str) -> None:
+    mount_suffix = str(Path(relative_path))
+    assert any(
+        line.strip().startswith("source: ") and line.strip().endswith(mount_suffix)
+        for line in text.splitlines()
+    )
 
 
 def test_docker_compose_declares_pinned_neo4j_image_and_bind_mounts():
@@ -22,9 +30,9 @@ def test_docker_compose_declares_pinned_neo4j_image_and_bind_mounts():
     assert "RETURN 1;" in text
     assert 'published: "7474"' in text
     assert 'published: "7687"' in text
-    assert f"source: {Path.cwd() / 'infra/neo4j/data'}" in text
-    assert f"source: {Path.cwd() / 'infra/neo4j/logs'}" in text
-    assert f"source: {Path.cwd() / 'infra/neo4j/plugins'}" in text
+    _assert_bind_mount_present(text, "infra/neo4j/data")
+    _assert_bind_mount_present(text, "infra/neo4j/logs")
+    _assert_bind_mount_present(text, "infra/neo4j/plugins")
     assert "target: /data" in text
     assert "target: /logs" in text
     assert "target: /plugins" in text

@@ -31,8 +31,32 @@ REFERENCE_GRAPH_QUERIES = [
         "MERGE (soxx)-[:HOLDS]->(amd)"
     ),
     (
+        "MATCH (soxx:Instrument {ticker: 'SOXX'}), (nvda:Company {ticker: 'NVDA'}) "
+        "MERGE (soxx)-[:HOLDS]->(nvda)"
+    ),
+    (
+        "MATCH (soxx:Instrument {ticker: 'SOXX'}), (tsmc:Company {ticker: 'TSMC'}) "
+        "MERGE (soxx)-[:HOLDS]->(tsmc)"
+    ),
+    (
+        "MATCH (smh:Instrument {ticker: 'SMH'}), (amd:Company {ticker: 'AMD'}) "
+        "MERGE (smh)-[:HOLDS]->(amd)"
+    ),
+    (
+        "MATCH (smh:Instrument {ticker: 'SMH'}), (asml:Company {ticker: 'ASML'}) "
+        "MERGE (smh)-[:HOLDS]->(asml)"
+    ),
+    (
         "MATCH (tsmc:Company {ticker: 'TSMC'}), (nvda:Company {ticker: 'NVDA'}) "
         "MERGE (tsmc)-[:SUPPLIES]->(nvda)"
+    ),
+    (
+        "MATCH (tsmc:Company {ticker: 'TSMC'}), (amd:Company {ticker: 'AMD'}) "
+        "MERGE (tsmc)-[:SUPPLIES]->(amd)"
+    ),
+    (
+        "MATCH (asml:Company {ticker: 'ASML'}), (tsmc:Company {ticker: 'TSMC'}) "
+        "MERGE (asml)-[:SUPPLIES]->(tsmc)"
     ),
 ]
 
