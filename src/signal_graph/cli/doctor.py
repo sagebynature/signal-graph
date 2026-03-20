@@ -62,7 +62,7 @@ def doctor() -> None:
                 _print_check("neo4j auth", "error", str(exc))
                 checks_ok = False
         elif explicit_auth_valid:
-            _print_check("neo4j auth", "ok")
+            _print_check("neo4j auth", "blocked", "config invalid")
         else:
             _print_check("neo4j auth", "skipped", "config invalid")
 

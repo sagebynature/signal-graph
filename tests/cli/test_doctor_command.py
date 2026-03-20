@@ -151,3 +151,27 @@ def test_doctor_reports_malformed_neo4j_auth_even_when_config_is_invalid(
     assert "invalid config toml" in result.stdout.lower()
     assert "neo4j auth: error" in result.stdout.lower()
     assert "username/password" in result.stdout.lower()
+
+
+def test_doctor_blocks_neo4j_auth_when_config_is_invalid_even_if_auth_is_valid(
+    monkeypatch, tmp_path
+):
+    monkeypatch.chdir(tmp_path)
+    config_dir = tmp_path / ".signal-graph"
+    config_dir.mkdir()
+    (config_dir / "config.toml").write_text("not = [valid")
+    monkeypatch.setenv("NEO4J_AUTH", "neo4j/password")
+    monkeypatch.setattr(shutil, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(
+        "signal_graph.cli.doctor.subprocess.run",
+        lambda *args, **kwargs: SimpleNamespace(returncode=0),
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(app, ["doctor"])
+
+    assert result.exit_code == 1
+    assert "config: error" in result.stdout.lower()
+    assert "invalid config toml" in result.stdout.lower()
+    assert "neo4j auth: blocked (config invalid)" in result.stdout.lower()
+    assert "neo4j auth: ok" not in result.stdout.lower()
