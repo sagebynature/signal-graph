@@ -19,6 +19,8 @@ Understand the tool before operating it:
 - Memo artifacts are written to `.signal-graph/artifacts/`.
 - The pipeline exists to turn raw market events into explainable trade candidates with explicit provenance boundaries.
 
+Read `../../docs/README.md` if you need the human-facing documentation map before operating the repo.
+
 ## Command Contract
 
 Run commands in this order:
@@ -73,7 +75,7 @@ Map common analyst intents to these modes:
 
 Use `submit` when a human or agent is manually entering an event hypothesis.
 
-Use `fetch` when a connector can return raw source items. Expect connector coverage to remain limited in this cut.
+Use `fetch` when a connector can return raw source items. Expect connector coverage to remain limited in this cut. The `web` connector returns stub public-web results and the `premium` connector is still a placeholder.
 
 Use `normalize` to convert a raw item into a canonical event candidate. Provide `--event-type`, `--direction`, and `--primary-entity`; use `--secondary-entity` when the event needs it.
 
@@ -90,7 +92,7 @@ Use `explain` to print a memo and write a markdown artifact that separates fact,
 Bootstrap with:
 
 ```bash
-uv sync
+uv sync --group dev
 uv run signal-graph doctor
 uv run signal-graph init
 uv run signal-graph version
@@ -101,7 +103,7 @@ If the `signal-graph` command is unavailable, recover the environment before doi
 ```bash
 git clone git@github.com:schoi80/signal-graph.git
 cd signal-graph
-uv sync
+uv sync --group dev
 uv run signal-graph doctor
 uv run signal-graph init
 ```
@@ -117,20 +119,21 @@ Assume these prerequisites for a usable local environment:
 
 - Python 3.12
 - `uv`
+- `ty`
 - Docker
 - `make`
 
 If Neo4j is not available yet, do not attempt `ingest`, `rank`, or `explain` and then guess at downstream results. Bring the dependency up first or stop and report the environment gap.
 
-Use this minimal flow for a manual event:
+Use this minimal flow for a manual event. Replace placeholder IDs with values returned by the preceding command.
 
 ```bash
 uv run signal-graph submit --text "TSMC cuts capex"
-uv run signal-graph normalize --raw-item raw-123 --event-type capex_cut --direction negative --primary-entity TSMC
-uv run signal-graph research --event-candidate evt-123 --bundle-file bundle.json
-uv run signal-graph ingest --event-candidate evt-123
-uv run signal-graph rank --event ge-123
-uv run signal-graph explain --event ge-123 --candidate SMH
+uv run signal-graph normalize --raw-item RAW_ITEM_ID --event-type capex_cut --direction negative --primary-entity TSMC
+uv run signal-graph research --event-candidate EVENT_CANDIDATE_ID --bundle-file bundle.json
+uv run signal-graph ingest --event-candidate EVENT_CANDIDATE_ID
+uv run signal-graph rank --event GRAPH_EVENT_ID
+uv run signal-graph explain --event GRAPH_EVENT_ID --candidate SMH
 ```
 
 Assume local state lives under `.signal-graph/`. Inspect `.signal-graph/signal_graph.db` and `.signal-graph/artifacts/` before inventing alternate storage paths.
@@ -152,6 +155,8 @@ If ranking looks empty or weak, do not assume the graph should already contain t
 Use the same root-cause style as `Weak Signal Diagnosis`: explain the failure mode in plain English before rerunning or changing the workflow.
 
 ## Read More Only When Needed
+
+Read `../../docs/README.md` when you need the full documentation map and role-based reading order.
 
 Read `../../docs/runbooks/analyst-agent-guide.md` when operating the pipeline as an analyst or agent.
 

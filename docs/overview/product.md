@@ -2,74 +2,90 @@
 
 ## Summary
 
-`Signal Graph` is a local, CLI-first trading research toolkit for event-driven idea generation and memo production.
+`Signal Graph` is a local, CLI-first trading research toolkit for event-driven idea generation.
 
-Its purpose is not to automate trading. Its purpose is to structure the path from a raw event to an explainable, provenance-aware trade hypothesis.
+Its job is to make the path from a raw event to an explainable hypothesis explicit. It does not try to automate execution or hide reasoning behind a black box.
 
-## Problem
+## The Problem It Solves
 
-Analysts and coding agents can gather headlines quickly, but raw event streams are noisy:
+Analysts and coding agents can collect headlines quickly, but fast collection does not produce a trustworthy thesis on its own.
 
-- the same event appears across multiple sources
-- evidence quality varies by source type
-- entity resolution is often incomplete
-- downstream reasoning can get mixed with unsupported storytelling
+Common failure modes:
 
-Most tooling either stops at note-taking or jumps directly to opaque scoring. `Signal Graph` is meant to sit in between, making the decision chain explicit.
+- The same event appears in several noisy forms
+- Evidence quality varies across sources
+- Entity resolution is incomplete or wrong
+- Downstream narratives outrun the stored evidence
+- Ranking logic becomes opaque once it leaves the note-taking stage
+
+Signal Graph is designed to sit between raw intake and final memo output. It forces the research chain into visible stages.
 
 ## Product Shape
 
-The product is best understood as a workflow:
+Signal Graph is best understood as a workflow:
 
-`raw event -> normalized event candidate -> researched bundle -> graph event -> ranked candidates -> memo`
+`raw source item -> event candidate -> research bundle -> graph event -> ranked candidates -> memo`
 
-That workflow is implemented as deterministic CLI commands and local artifacts so it can be operated by humans or coding agents.
+That workflow is implemented as explicit CLI commands, local state, and inspectable artifacts so humans and coding agents can operate it the same way.
 
 ## Who It Is For
 
-- A discretionary analyst working from breaking headlines and thematic research
+- A discretionary analyst working from breaking news or thematic research
 - A research engineer building a reproducible event-to-thesis workflow
-- A coding agent that needs explicit commands, provenance boundaries, and local artifacts
-- A product stakeholder evaluating whether the workflow is coherent and extensible
+- A coding agent that needs a strict command contract and clear provenance boundaries
+- A stakeholder evaluating whether the product shape is coherent and extensible
 
-## Intended Use Cases
+## Primary Use Cases
 
-### 1. Manual Event Capture
+### Manual Event Capture
 
-An analyst pastes an observation such as "supplier disruption" or "capex cut" and wants to formalize it into a structured research flow.
+An analyst starts with a note such as "TSMC cuts capex" and wants to formalize it into a repeatable research flow.
 
-### 2. Connector-Driven Research Intake
+### Connector-Driven Intake
 
-A connector returns public-web or premium-feed material that should be normalized into the same canonical pipeline.
+A connector returns public or premium-source items that should enter the same normalized pipeline as manual input.
 
-### 3. Graph-Based Spillover Reasoning
+### Graph-Based Spillover Reasoning
 
-Once an event is researched, the system can reason about likely beneficiaries, victims, peers, or thematic instruments through explicit graph paths.
+Once the event has research attached, the system can reason through explicit relationship paths to likely beneficiaries, victims, peers, customers, suppliers, or ETFs.
 
-### 4. Memo Generation For Decision Support
+### Memo Production For Decision Support
 
-The final output is a memo artifact that distinguishes:
+The final output is a memo that distinguishes:
 
-- confirmed fact
-- graph implication
-- assistant inference
+- Confirmed fact
+- Graph implication
+- Analyst or assistant inference
 
 ## What Makes It Different
 
 - CLI-native instead of dashboard-first
-- provenance-aware instead of summary-first
-- graph-reasoned instead of keyword-related
-- designed for agent operation, not just human clicking
+- Provenance-aware instead of summary-first
+- Graph-reasoned instead of keyword-related
+- Designed for coding agents and local operation, not only for human clicking
 
 ## Current Maturity
 
-This repository is an MVP.
+This repository is an MVP. The local operating contract is in place and documented, but some subsystems are intentionally lightweight so the workflow can stabilize first.
 
-It already supports the full local command chain, test coverage for the manual flow, and documentation for operators and agents. Several parts remain intentionally stubbed so the contract can stabilize before deeper market-data or graph logic is added.
+The current cut already supports:
 
-## Non-Goals
+- The full local command chain
+- A deterministic manual event flow
+- SQLite-backed pipeline state
+- Neo4j-backed graph ingest and ranking
+- Markdown memo output
 
-- execution or brokerage integration
-- fully autonomous trading
-- production-grade low-latency ingestion in the current cut
-- black-box recommendation generation without auditability
+## What This Cut Does Not Try To Do
+
+- Trade execution or brokerage integration
+- Fully autonomous trading
+- Production-grade low-latency ingestion
+- Opaque recommendation generation without auditability
+
+## Read Next
+
+- Landing page: [`../../README.md`](../../README.md)
+- Architecture: [`../architecture/system-overview.md`](../architecture/system-overview.md)
+- Local operation: [`../runbooks/operator-guide.md`](../runbooks/operator-guide.md)
+- Analyst workflow: [`../runbooks/analyst-agent-guide.md`](../runbooks/analyst-agent-guide.md)

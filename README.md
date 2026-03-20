@@ -1,92 +1,86 @@
 # Signal Graph
 
-`Signal Graph` is a CLI-first, provenance-aware trading research toolkit for turning raw market events into explainable trade candidates.
+`Signal Graph` is a local, CLI-first trading research toolkit for turning a market event into an explainable trade hypothesis with explicit provenance.
 
-It is built for a workflow where an analyst or coding agent:
+It is not an execution engine. It is a structured workflow for moving from a raw event to a memo that separates confirmed fact, graph implication, and analyst inference.
 
-1. collects or submits an event,
-2. normalizes it into a canonical event candidate,
-3. adds supporting research and provenance,
-4. ingests the event into a graph reasoning layer,
-5. ranks likely trade expressions, and
-6. writes a memo that distinguishes fact, graph implication, and inference.
+## What You Get
 
-The first cut is intentionally terminal-native. It favors explicit commands, local state, deterministic artifacts, and machine-readable output over a dashboard-first experience.
+- A `signal-graph` CLI with explicit, auditable stages
+- A local SQLite store for pipeline state and provenance
+- A Neo4j runtime for graph-oriented reasoning
+- Markdown memo artifacts under `.signal-graph/artifacts/`
+- Role-based docs for operators, analysts, stakeholders, and coding agents
 
-## What This Repo Is
+## The Core Workflow
 
-This repository implements the local operating surface for that workflow:
-
-- a `signal-graph` CLI
-- a local SQLite metadata store for pipeline state and provenance
-- a Neo4j runtime for graph-oriented reasoning
-- filesystem artifacts for cached material and memo output
-- runbooks and skill docs for human operators and coding agents
-
-## Intended Users
-
-- Developers and operators who need to run or extend the local toolkit
-- Analysts who want a structured workflow for event-driven discretionary research
-- Coding agents that need a strict, auditable command order
-- Stakeholders who need to understand the product shape, decision model, and architecture
-
-## Core Use Cases
-
-- Capture a breaking event from a manual note, a public source, or a structured feed
-- Normalize duplicate or noisy raw inputs into a single event candidate
-- Record the evidence used to support or challenge an event hypothesis
-- Ingest an event into a relationship graph to reason about spillover paths
-- Rank likely tickers or ETFs for immediate or short-drift reaction windows
-- Produce a memo with explicit provenance boundaries
-
-## Workflow
-
-The canonical pipeline is:
+Run the pipeline in this order:
 
 `fetch` or `submit` -> `normalize` -> `research` -> `ingest` -> `rank` -> `explain`
 
-The important operating rule is that `research` is the provenance checkpoint. Downstream ranking or explanation claims should not outrun stored evidence.
+The important rule is simple: do not skip `research`. It is the provenance checkpoint for everything downstream.
+
+## Who This Repo Is For
+
+- Operators and developers who need to run or extend the local toolkit
+- Analysts who want a disciplined event-to-thesis workflow
+- Coding agents that need explicit command order and inspectable local state
+- Stakeholders who need to understand the product shape and architecture
 
 ## Quick Start
 
-### Bootstrap
+### 1. Install Prerequisites
+
+You need:
+
+- Python 3.12
+- `uv`
+- `ty`
+- Docker
+- `make`
+
+### 2. Bootstrap The Local Environment
 
 ```bash
-uv sync
+uv sync --group dev
 uv run signal-graph doctor
 uv run signal-graph init
 uv run signal-graph version
 ```
 
-### Local Neo4j
+`signal-graph doctor` reports whether `docker`, `uv`, and `ty` are available. It also reports whether `.signal-graph/config.toml` exists. `config: missing` is normal until you create a local config file.
 
-- Set `NEO4J_AUTH` before the first `make neo4j-up` if you want a non-default `neo4j/<password>` credential.
-- If you change `NEO4J_AUTH` later, remove `./infra/neo4j/data` first or keep using the existing password.
-- Removing `./infra/neo4j/data` also deletes your persisted local Neo4j data.
-- Authless mode such as `NEO4J_AUTH=none` is not part of this bootstrap setup.
+### 3. Start Neo4j
+
+Before first startup, set `NEO4J_AUTH` if you do not want the default `neo4j/password` credential.
 
 ```bash
 make neo4j-up
 docker compose ps
-make neo4j-down
 ```
 
-Neo4j data, logs, and plugins live under `./infra/neo4j/`.
+Operational notes:
 
-### Minimal Manual Flow
+- Neo4j data, logs, and plugins live under `infra/neo4j/`.
+- Wait for the container to become `healthy` before using `ingest`, `rank`, or `explain`.
+- If you change `NEO4J_AUTH`, you may need to clear `infra/neo4j/data` or keep using the old password.
+- Removing `infra/neo4j/data` also removes local Neo4j state.
+
+### 4. Run A Minimal Manual Flow
+
+The commands below use placeholder IDs. Replace each ID with the value returned by the previous command.
 
 ```bash
-uv run signal-graph init
 uv run signal-graph submit --text "TSMC cuts capex"
 uv run signal-graph normalize \
-  --raw-item raw-123 \
+  --raw-item RAW_ITEM_ID \
   --event-type capex_cut \
   --direction negative \
   --primary-entity TSMC
-uv run signal-graph research --event-candidate evt-123 --bundle-file bundle.json
-uv run signal-graph ingest --event-candidate evt-123
-uv run signal-graph rank --event ge-123
-uv run signal-graph explain --event ge-123 --candidate SMH
+uv run signal-graph research --event-candidate EVENT_CANDIDATE_ID --bundle-file bundle.json
+uv run signal-graph ingest --event-candidate EVENT_CANDIDATE_ID
+uv run signal-graph rank --event GRAPH_EVENT_ID
+uv run signal-graph explain --event GRAPH_EVENT_ID --candidate SMH
 ```
 
 Example `bundle.json`:
@@ -102,15 +96,29 @@ Example `bundle.json`:
 }
 ```
 
-`research` now expects either `--bundle-file` or an explicit `--allow-empty`. Empty placeholder bundles are no longer the default.
+`research` requires either `--bundle-file` or `--allow-empty`. Relative bundle paths are resolved from your current working directory.
 
-### Customizing Scoring Policy
+### 5. Inspect Local State
 
-Scoring policy can be customized locally in `.signal-graph/config.toml`. The system keeps its built-in defaults, then merges local overrides by exact match:
+After `init` and a successful workflow run, the important local paths are:
 
-- path rule match key: `relationship_path`
-- event override match key: `event_type + direction + relationship_path`
-- event fallback rationale match key: `event_type + direction`
+- `.signal-graph/signal_graph.db`: SQLite system of record for the local pipeline
+- `.signal-graph/artifacts/`: generated memo artifacts
+- `.signal-graph/config.toml`: optional local config overrides
+
+## Local Configuration
+
+You can override ranking and memo behavior in `.signal-graph/config.toml` under `[scoring_policy]`.
+
+The system merges:
+
+1. Built-in defaults
+2. Path overrides matched by `relationship_path`
+3. Event overrides matched by `event_type + direction + relationship_path`
+
+Reference example:
+
+- [`docs/examples/scoring-policy.example.toml`](docs/examples/scoring-policy.example.toml)
 
 Example:
 
@@ -129,56 +137,42 @@ timing_window = "immediate"
 rationale = "For a negative `export_control`, sector ETF exposure can move immediately."
 ```
 
-Use the full example file at `docs/examples/scoring-policy.example.toml` as the copyable reference. Malformed scoring policy config fails fast with a clear error instead of being silently ignored.
+Malformed scoring policy config fails fast instead of being ignored.
 
 ## Documentation Map
 
-Start here based on your role:
+Start with [`docs/README.md`](docs/README.md) for the full documentation guide.
 
-- Stakeholder or product reader: [`docs/overview/product.md`](docs/overview/product.md)
-- Local developer or operator: [`docs/runbooks/operator-guide.md`](docs/runbooks/operator-guide.md)
-- Analyst or coding agent user: [`docs/runbooks/analyst-agent-guide.md`](docs/runbooks/analyst-agent-guide.md)
-- Architecture reader: [`docs/architecture/system-overview.md`](docs/architecture/system-overview.md)
-
-Decision records:
-
-- [`docs/adr/ADR-0001-cli-first-provenance-workflow.md`](docs/adr/ADR-0001-cli-first-provenance-workflow.md)
-- [`docs/adr/ADR-0002-sqlite-plus-neo4j-separation.md`](docs/adr/ADR-0002-sqlite-plus-neo4j-separation.md)
-- [`docs/adr/ADR-0003-agent-skill-and-command-order.md`](docs/adr/ADR-0003-agent-skill-and-command-order.md)
-
-Legacy plan and design material:
-
-- [`docs/plans/2026-03-19-neo4j-ai-trading-design.md`](docs/plans/2026-03-19-neo4j-ai-trading-design.md)
-- [`docs/plans/2026-03-19-neo4j-ai-trading-mvp.md`](docs/plans/2026-03-19-neo4j-ai-trading-mvp.md)
-
-Older planning documents may still refer to `trade-graph`; they describe the same project before the rebrand to `Signal Graph`.
+- Product context: [`docs/overview/product.md`](docs/overview/product.md)
+- Architecture and storage model: [`docs/architecture/system-overview.md`](docs/architecture/system-overview.md)
+- Setup, runtime, and troubleshooting: [`docs/runbooks/operator-guide.md`](docs/runbooks/operator-guide.md)
+- Research workflow for analysts and agents: [`docs/runbooks/analyst-agent-guide.md`](docs/runbooks/analyst-agent-guide.md)
+- Reusable prompt templates: [`docs/prompts/signal-graph-analyst-prompt-pack.md`](docs/prompts/signal-graph-analyst-prompt-pack.md)
+- Background design decisions: `docs/adr/`
 
 ## Current State
 
-The repository currently provides:
+This repository is an MVP. It already supports:
 
-- local CLI commands for `doctor`, `init`, `submit`, `fetch`, `normalize`, `research`, `ingest`, `rank`, and `explain`
-- a deterministic local test path for the manual event flow
-- persisted `fetch` and `submit` intake into SQLite under `.signal-graph/signal_graph.db`
-- structured research bundles with stored support URLs, contradictions, evidence spans, and confidence
-- a Neo4j-backed graph ingest path with a seeded semiconductor reference graph
-- graph-based ranking that returns path-aware candidate reasons such as direct entity, ETF holdings, and supplier spillover
-- memo generation that cites stored evidence and separates confirmed fact, graph implication, and assistant inference
+- The full local CLI command chain from intake through memo output
+- Stored raw items, event candidates, research bundles, and graph events
+- Graph-backed ranking with relationship-path explanations
+- Markdown memo artifacts with provenance-aware wording
+- Local scoring-policy overrides
+- Test coverage for the manual CLI flow
 
-This is not yet a production trading system. It is a structured local research toolkit and integration base.
+What it does not try to be in this cut:
 
-## Non-Goals For This Cut
-
-- automated execution or order routing
-- real-time production-grade market data ingestion
-- fully calibrated ranking models
-- a dashboard or browser UI as the primary interface
-- autonomous claims that bypass stored provenance
+- An order execution or brokerage integration layer
+- A production market-data system
+- A calibrated trading model
+- A dashboard-first product
+- A system that skips stored evidence and still claims confidence
 
 ## Development Verification
 
 ```bash
-uv run pytest -v
+uv run --group dev python -m pytest -v
 uv run ty check
 uv run signal-graph doctor
 uv run signal-graph version

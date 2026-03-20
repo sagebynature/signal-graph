@@ -2,32 +2,34 @@
 
 ## Architecture Summary
 
-`Signal Graph` is organized as a local pipeline with clear separation between command surface, canonical models, local persistence, graph reasoning, and memo artifacts.
+`Signal Graph` is a local pipeline with a strict separation between command surface, transformation logic, canonical models, persistence, graph reasoning, and memo output.
 
 At a high level:
 
 `CLI -> services -> models -> SQLite / Neo4j / filesystem artifacts`
 
+That separation matters because the repo is built to make the research chain inspectable instead of collapsing everything into one opaque scoring step.
+
 ## Major Components
 
 ### CLI
 
-The CLI in `src/signal_graph/cli/` is the user and agent entrypoint. Each command maps to one stage of the operating workflow.
+The CLI under `src/signal_graph/cli/` is the operating contract for both humans and coding agents. Each command maps to one stage of the workflow.
 
 ### Services
 
-The services layer in `src/signal_graph/services/` owns transformation logic:
+The services layer under `src/signal_graph/services/` owns the domain logic:
 
 - raw item creation and persistence
 - normalization and dedupe
 - research bundle creation
 - graph ingest orchestration
 - ranking
-- explanation and memo writing
+- memo generation
 
 ### Canonical Models
 
-The models in `src/signal_graph/models/` define the core pipeline objects:
+The models under `src/signal_graph/models/` define the main objects that move through the pipeline:
 
 - `RawSourceItem`
 - `EventCandidate`
@@ -36,43 +38,56 @@ The models in `src/signal_graph/models/` define the core pipeline objects:
 - `RankedCandidate`
 - `MemoResponse`
 
-### SQLite Metadata Store
+### SQLite
 
-SQLite is the local system of record for the MVP. It stores pipeline objects, provenance-linked records, and local progress across commands.
+SQLite under `.signal-graph/signal_graph.db` is the local system of record for this MVP. It stores pipeline objects, provenance-linked data, and local progress across commands.
 
-### Neo4j Runtime
+### Neo4j
 
-Neo4j is the graph reasoning layer. In the current cut, the graph client and schema are lightweight, but the boundary is in place for richer relationship traversal and constraint management.
+Neo4j is the graph reasoning layer. The current implementation is intentionally small, but the boundary already exists for explicit relationship traversal and richer ingest logic.
 
 ### Filesystem Artifacts
 
-The `.signal-graph/` directory stores local database state and memo artifacts. This keeps outputs inspectable and easy for agents to reference.
+The `.signal-graph/` directory holds local project state:
 
-## Data Flow
+- `signal_graph.db` for SQLite state
+- `artifacts/` for generated memo output
+- `config.toml` for optional local overrides
+
+## Canonical Object Lifecycle
 
 ### 1. Intake
 
-`submit` or `fetch` produces one or more `RawSourceItem` objects.
+`submit` or `fetch` produces one or more `RawSourceItem` records.
 
 ### 2. Normalize
 
-`normalize` converts a raw item into an `EventCandidate` and applies basic dedupe behavior using a fingerprint derived from normalized title text.
+`normalize` converts a raw item into an `EventCandidate`. It also applies basic dedupe behavior using a fingerprint derived from the normalized title text.
 
 ### 3. Research
 
-`research` creates a `ResearchBundle` for the event candidate. This is where supporting evidence, contradictions, and confidence context belong.
+`research` creates a `ResearchBundle` for the event candidate. This is where supporting documents, contradictions, evidence spans, confidence, and notes belong.
 
 ### 4. Ingest
 
-`ingest` validates that the event candidate and research bundle exist, then records a `GraphEvent` and sends the graph payload through the graph client boundary.
+`ingest` validates that the event candidate and research bundle exist, creates a `GraphEvent`, and sends the graph payload through the Neo4j boundary.
 
 ### 5. Rank
 
-`rank` returns candidate trade expressions with scores and timing windows.
+`rank` returns candidate instruments with scores, timing windows, matched entities, relationship paths, and short reasons.
 
 ### 6. Explain
 
-`explain` writes a memo artifact and prints memo text that separates fact, implication, and inference.
+`explain` writes a memo artifact and prints memo text that separates confirmed facts, graph implications, and analyst inference.
+
+## Why SQLite And Neo4j Both Exist
+
+SQLite and Neo4j do different jobs.
+
+- SQLite is better for canonical local records, deterministic tests, and simple state lookup across the whole pipeline.
+- Neo4j is better for explicit relationship paths and spillover reasoning.
+
+The system does not force every object into the graph. That is intentional.
 
 ## Trust And Provenance Model
 
@@ -84,18 +99,18 @@ The architecture deliberately separates:
 - graph reasoning
 - narrative output
 
-This reduces the risk of explanation layers outrunning the underlying evidence.
-
-## Why SQLite And Neo4j Both Exist
-
-- SQLite is good for local canonical records, deterministic tests, and simple pipeline persistence
-- Neo4j is good for explicit relationship paths and propagation reasoning
-
-The system does not force every object into the graph. That is intentional.
+That separation makes it easier to see when a conclusion is supported, when it is inferred, and where the chain breaks if the result is weak.
 
 ## Current Limitations
 
-- public and premium connectors are still stub-level
-- graph ingest is currently a thin contract rather than a full relationship engine
-- ranking is deterministic and not yet calibrated from real graph output
-- explanation is template-driven and not yet evidence-span aware
+- Connectors are still lightweight. `web` returns stub public-web results and `premium` is currently a placeholder.
+- Graph ingest is a thin contract, not a full production graph ingestion engine.
+- Ranking is deterministic and not calibrated from live market outcomes.
+- Memo generation is template-driven and not yet deeply evidence-span aware.
+
+## Read Next
+
+- Landing page: [`../../README.md`](../../README.md)
+- Product context: [`../overview/product.md`](../overview/product.md)
+- Local setup: [`../runbooks/operator-guide.md`](../runbooks/operator-guide.md)
+- Workflow usage: [`../runbooks/analyst-agent-guide.md`](../runbooks/analyst-agent-guide.md)

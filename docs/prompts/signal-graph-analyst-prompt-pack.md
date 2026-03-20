@@ -1,16 +1,18 @@
 # Signal Graph Analyst Prompt Pack
 
-This pack is for non-technical analysts using `Signal Graph` as a structured research workflow rather than a coding surface.
+This pack is a companion to the CLI workflow. Use it when you want reusable prompt wording on top of the Signal Graph pipeline.
+
+Read [`../runbooks/analyst-agent-guide.md`](../runbooks/analyst-agent-guide.md) first if you do not already know the command order and output shape.
 
 Core operating model:
 
 `raw event -> normalized event candidate -> researched bundle -> graph event -> ranked candidates -> memo`
 
-This document complements:
+Related docs:
 
-- `docs/runbooks/analyst-agent-guide.md`
-- `docs/overview/product.md`
-- `docs/architecture/system-overview.md`
+- workflow guide: [`../runbooks/analyst-agent-guide.md`](../runbooks/analyst-agent-guide.md)
+- product context: [`../overview/product.md`](../overview/product.md)
+- architecture: [`../architecture/system-overview.md`](../architecture/system-overview.md)
 
 ## What This Pack Is For
 
@@ -32,16 +34,25 @@ Signal Graph is strongest when the event has:
 - one clear primary entity
 - a clear positive or negative direction
 - a plausible spillover path to related companies or ETFs
-- enough public evidence to support both a thesis and at least one counterpoint
+- enough evidence to support both a thesis and at least one counterpoint
 
-Assume the operator may be starting from a fresh local graph with little or no prior state. The prompt should therefore make the event framing, evidence needs, and desired output explicit instead of assuming relevant entities or relationships already exist locally.
+Assume the operator may be starting from a fresh local graph with little or no prior state. Make the event framing, evidence needs, and desired output explicit.
 
 ## How To Use This Pack
 
 1. Start with the `Base Analyst Prompt`.
 2. Add one task module from `Prompt Library`.
 3. Replace the bracketed fields.
-4. If the output is thin or confusing, run `Weak Signal Diagnosis` or `Provenance Audit`.
+4. If the result is thin or confusing, use `Weak Signal Diagnosis` or `Provenance Audit`.
+
+## When Not To Use This Pack
+
+Do not use this pack as a substitute for:
+
+- basic local setup
+- CLI troubleshooting
+- understanding the storage model
+- learning the command order for the first time
 
 ## Base Analyst Prompt
 
@@ -431,3 +442,9 @@ If you only remember four options:
 - use `Spillover Map` when you want second-order names and ETFs
 - use `Weak Signal Diagnosis` when the result looks suspiciously thin
 - use `Provenance Audit` when you need to trust the chain before trusting the conclusion
+
+## Read Next
+
+- workflow guide: [`../runbooks/analyst-agent-guide.md`](../runbooks/analyst-agent-guide.md)
+- local setup: [`../runbooks/operator-guide.md`](../runbooks/operator-guide.md)
+- architecture: [`../architecture/system-overview.md`](../architecture/system-overview.md)
