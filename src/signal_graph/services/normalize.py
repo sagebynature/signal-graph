@@ -45,6 +45,10 @@ def normalize_and_persist_raw_item(
     if raw_item is None:
         raise ValueError(f"raw item not found: {raw_item_id}")
 
+    existing_event_candidate = store.get_event_candidate_for_raw_item(raw_item_id)
+    if existing_event_candidate is not None:
+        return existing_event_candidate
+
     event_candidate = normalize_raw_item(
         raw_item,
         event_type=event_type,

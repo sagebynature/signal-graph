@@ -65,14 +65,16 @@ def test_get_research_bundle_returns_latest_revision_for_event_candidate(tmp_pat
         source_item_ids=["raw-1"],
     )
     first_bundle = ResearchBundle(
-        research_bundle_id="rb-evt-123-0001",
+        research_bundle_id="rb-evt-123",
         event_candidate_id=event_candidate.event_candidate_id,
+        bundle_revision=1,
         supporting_documents=["https://example.com/1"],
         research_notes="first revision",
     )
     second_bundle = ResearchBundle(
-        research_bundle_id="rb-evt-123-0002",
+        research_bundle_id="rb-evt-123-r0002",
         event_candidate_id=event_candidate.event_candidate_id,
+        bundle_revision=2,
         supporting_documents=["https://example.com/2"],
         research_notes="second revision",
     )
@@ -193,6 +195,5 @@ def test_init_db_preserves_existing_rows_while_adding_provenance_columns(tmp_pat
 
     assert event_row is not None
     assert event_row[0]
-    assert event_row[1]
-    assert research_row == (1, research_row[1])
-    assert research_row[1]
+    assert event_row[1] is None
+    assert research_row == (1, None)

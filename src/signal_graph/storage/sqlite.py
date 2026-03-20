@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime
 from hashlib import sha256
 import json
 import sqlite3
@@ -129,9 +129,51 @@ class SqliteStore:
                     event_candidate.candidate_status,
                     event_candidate.created_at.isoformat()
                     if event_candidate.created_at is not None
-                    else datetime.now(UTC).isoformat(),
+                    else None,
                 ),
             )
+
+    def get_event_candidate_for_raw_item(
+        self, raw_item_id: str
+    ) -> EventCandidate | None:
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT
+                    event_candidate_id,
+                    title,
+                    event_type,
+                    direction,
+                    primary_entities,
+                    dedupe_fingerprint,
+                    secondary_entities,
+                    source_item_ids,
+                    candidate_confidence,
+                    candidate_status,
+                    created_at
+                FROM event_candidates
+                ORDER BY created_at DESC, rowid DESC
+                """
+            ).fetchall()
+
+        for row in rows:
+            event_candidate = EventCandidate(
+                event_candidate_id=row[0],
+                title=row[1],
+                event_type=row[2],
+                direction=row[3],
+                primary_entities=json.loads(row[4]),
+                dedupe_fingerprint=row[5],
+                secondary_entities=json.loads(row[6]),
+                source_item_ids=json.loads(row[7]),
+                candidate_confidence=row[8],
+                candidate_status=row[9],
+                created_at=datetime.fromisoformat(row[10]) if row[10] else None,
+            )
+            if raw_item_id in event_candidate.source_item_ids:
+                return event_candidate
+
+        return None
 
     def get_event_candidate(self, event_candidate_id: str) -> EventCandidate | None:
         with self._connect() as connection:
@@ -203,7 +245,7 @@ class SqliteStore:
                     bundle.research_notes,
                     bundle.created_at.isoformat()
                     if bundle.created_at is not None
-                    else datetime.now(UTC).isoformat(),
+                    else None,
                 ),
             )
 
@@ -365,13 +407,11 @@ class SqliteStore:
             connection.execute(
                 """
                 UPDATE event_candidates
-                SET dedupe_fingerprint = COALESCE(dedupe_fingerprint, ?),
-                    created_at = COALESCE(created_at, ?)
+                SET dedupe_fingerprint = COALESCE(dedupe_fingerprint, ?)
                 WHERE event_candidate_id = ?
                 """,
                 (
                     sha256(normalized_title.encode()).hexdigest(),
-                    datetime.now(UTC).isoformat(),
                     event_candidate_id,
                 ),
             )
@@ -390,12 +430,4 @@ class SqliteStore:
             )
             WHERE bundle_revision IS NULL
             """
-        )
-        connection.execute(
-            """
-            UPDATE research_bundles
-            SET created_at = ?
-            WHERE created_at IS NULL
-            """,
-            (datetime.now(UTC).isoformat(),),
         )

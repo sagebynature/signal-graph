@@ -147,3 +147,57 @@ def test_normalize_creates_distinct_event_candidates_for_matching_titles(
             json.dumps([second_raw_item_id]),
         ),
     ]
+
+
+def test_normalize_is_idempotent_for_same_raw_item_id(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+
+    runner = CliRunner()
+    runner.invoke(app, ["init"])
+    submit = runner.invoke(app, ["submit", "--text", "NVDA supplier disruption"])
+    raw_item_id = json.loads(submit.stdout)["raw_item_id"]
+
+    first_normalize = runner.invoke(
+        app,
+        [
+            "normalize",
+            "--raw-item",
+            raw_item_id,
+            "--event-type",
+            "supplier_disruption",
+            "--direction",
+            "negative",
+            "--primary-entity",
+            "NVDA",
+        ],
+    )
+    second_normalize = runner.invoke(app, ["normalize", "--raw-item", raw_item_id])
+
+    assert first_normalize.exit_code == 0
+    assert second_normalize.exit_code == 0
+
+    first_event_candidate = json.loads(first_normalize.stdout)
+    second_event_candidate = json.loads(second_normalize.stdout)
+    assert (
+        first_event_candidate["event_candidate_id"]
+        == second_event_candidate["event_candidate_id"]
+    )
+    assert second_event_candidate["event_type"] == "supplier_disruption"
+    assert second_event_candidate["direction"] == "negative"
+    assert second_event_candidate["primary_entities"] == ["NVDA"]
+    assert second_event_candidate["source_item_ids"] == [raw_item_id]
+
+    with sqlite3.connect(Path(".signal-graph/signal_graph.db")) as connection:
+        rows = connection.execute(
+            """
+            SELECT event_candidate_id, source_item_ids
+            FROM event_candidates
+            """
+        ).fetchall()
+
+    assert rows == [
+        (
+            first_event_candidate["event_candidate_id"],
+            json.dumps([raw_item_id]),
+        )
+    ]

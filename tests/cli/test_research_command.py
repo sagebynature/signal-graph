@@ -71,7 +71,7 @@ def test_research_creates_bundle_from_bundle_file(tmp_path, monkeypatch):
 
     assert result.exit_code == 0
     research_bundle = json.loads(result.stdout)
-    assert research_bundle["research_bundle_id"].startswith(f"rb-{event_candidate_id}-")
+    assert research_bundle["research_bundle_id"] == f"rb-{event_candidate_id}"
     assert research_bundle["supporting_documents"] == ["https://example.com/tsmc-capex"]
 
 
@@ -183,7 +183,9 @@ def test_research_preserves_multiple_revisions_for_same_event_candidate(
 
     first_bundle = json.loads(first_result.stdout)
     second_bundle = json.loads(second_result.stdout)
+    assert first_bundle["research_bundle_id"] == f"rb-{event_candidate_id}"
     assert first_bundle["research_bundle_id"] != second_bundle["research_bundle_id"]
+    assert second_bundle["research_bundle_id"] == f"rb-{event_candidate_id}-r0002"
 
     with sqlite3.connect(Path(".signal-graph/signal_graph.db")) as connection:
         rows = connection.execute(
@@ -252,7 +254,7 @@ def test_research_allows_empty_bundle_when_explicitly_requested(tmp_path, monkey
 
     assert result.exit_code == 0
     research_bundle = json.loads(result.stdout)
-    assert research_bundle["research_bundle_id"].startswith(f"rb-{event_candidate_id}-")
+    assert research_bundle["research_bundle_id"] == f"rb-{event_candidate_id}"
     assert research_bundle["supporting_documents"] == []
     assert research_bundle["contradictions"] == []
 

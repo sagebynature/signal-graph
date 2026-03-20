@@ -35,8 +35,13 @@ def build_research_bundle(
     *,
     bundle_revision: int,
 ) -> ResearchBundle:
+    research_bundle_id = (
+        f"rb-{event.event_candidate_id}"
+        if bundle_revision == 1
+        else f"rb-{event.event_candidate_id}-r{bundle_revision:04d}"
+    )
     return ResearchBundle(
-        research_bundle_id=f"rb-{event.event_candidate_id}-r{bundle_revision:04d}",
+        research_bundle_id=research_bundle_id,
         event_candidate_id=event.event_candidate_id,
         bundle_revision=bundle_revision,
         supporting_documents=bundle_input.supporting_documents,
