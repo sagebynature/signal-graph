@@ -72,11 +72,22 @@ def _reconcile_existing_event_candidate(
     raw_item_id: str,
 ) -> EventCandidate:
     if len(existing_event_candidate.source_item_ids) > 1:
-        return store.split_legacy_event_candidate_for_raw_item(
+        split_result = store.split_legacy_event_candidate_for_raw_item(
             existing_event_candidate,
             incoming_event_candidate,
             raw_item_id=raw_item_id,
         )
+        if (
+            split_result.event_candidate_id
+            != incoming_event_candidate.event_candidate_id
+        ):
+            merged_event_candidate = merge_event_candidates(
+                split_result,
+                incoming_event_candidate,
+            )
+            store.update_event_candidate(merged_event_candidate)
+            return merged_event_candidate
+        return split_result
 
     merged_event_candidate = merge_event_candidates(
         existing_event_candidate,

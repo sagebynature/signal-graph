@@ -521,3 +521,123 @@ def test_normalize_refuses_to_split_processed_legacy_candidate(tmp_path, monkeyp
 
     assert result.exit_code == 1
     assert "processed legacy candidates cannot be auto-split" in result.stdout.lower()
+
+
+def test_normalize_merges_overrides_when_concurrent_split_winner_already_exists(
+    tmp_path, monkeypatch
+):
+    monkeypatch.chdir(tmp_path)
+
+    runner = CliRunner()
+    runner.invoke(app, ["init"])
+    first_submit = runner.invoke(app, ["submit", "--text", "NVDA supplier disruption"])
+    second_submit = runner.invoke(app, ["submit", "--text", "NVDA supplier disruption"])
+    first_raw_item_id = json.loads(first_submit.stdout)["raw_item_id"]
+    second_raw_item_id = json.loads(second_submit.stdout)["raw_item_id"]
+
+    first_normalize = runner.invoke(app, ["normalize", "--raw-item", first_raw_item_id])
+    assert first_normalize.exit_code == 0
+    legacy_event_candidate = json.loads(first_normalize.stdout)
+
+    with sqlite3.connect(Path(".signal-graph/signal_graph.db")) as connection:
+        connection.execute(
+            """
+            UPDATE event_candidates
+            SET source_item_ids = ?
+            WHERE event_candidate_id = ?
+            """,
+            (
+                json.dumps([first_raw_item_id, second_raw_item_id]),
+                legacy_event_candidate["event_candidate_id"],
+            ),
+        )
+        connection.execute(
+            """
+            INSERT INTO event_candidate_source_items (raw_item_id, event_candidate_id)
+            VALUES (?, ?)
+            ON CONFLICT(raw_item_id) DO UPDATE SET event_candidate_id = excluded.event_candidate_id
+            """,
+            (second_raw_item_id, legacy_event_candidate["event_candidate_id"]),
+        )
+
+    original_split = SqliteStore.split_legacy_event_candidate_for_raw_item
+    raced = False
+
+    def concurrent_winner_split(
+        self: SqliteStore, existing_event_candidate, new_event_candidate, *, raw_item_id
+    ):
+        nonlocal raced
+        if not raced:
+            raced = True
+            winner = new_event_candidate.model_copy(
+                update={
+                    "event_candidate_id": "evt-concurrent-winner",
+                    "event_type": "unknown",
+                    "direction": "unknown",
+                    "primary_entities": [],
+                    "secondary_entities": [],
+                }
+            )
+            original_split(
+                self,
+                existing_event_candidate,
+                winner,
+                raw_item_id=raw_item_id,
+            )
+        with sqlite3.connect(Path(".signal-graph/signal_graph.db")) as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                """
+                SELECT
+                    ec.event_candidate_id,
+                    ec.title,
+                    ec.event_type,
+                    ec.direction,
+                    ec.primary_entities,
+                    ec.dedupe_fingerprint,
+                    ec.secondary_entities,
+                    ec.source_item_ids,
+                    ec.candidate_confidence,
+                    ec.candidate_status,
+                    ec.created_at
+                FROM event_candidate_source_items AS ecsi
+                JOIN event_candidates AS ec
+                    ON ec.event_candidate_id = ecsi.event_candidate_id
+                WHERE ecsi.raw_item_id = ?
+                """,
+                (raw_item_id,),
+            ).fetchone()
+
+        return SqliteStore._hydrate_event_candidate(self, row)
+
+    monkeypatch.setattr(
+        SqliteStore,
+        "split_legacy_event_candidate_for_raw_item",
+        concurrent_winner_split,
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "normalize",
+            "--raw-item",
+            second_raw_item_id,
+            "--event-type",
+            "supplier_disruption",
+            "--direction",
+            "negative",
+            "--primary-entity",
+            "NVDA",
+            "--secondary-entity",
+            "SMH",
+        ],
+    )
+
+    assert result.exit_code == 0
+    event_candidate = json.loads(result.stdout)
+    assert event_candidate["event_candidate_id"] == "evt-concurrent-winner"
+    assert event_candidate["event_type"] == "supplier_disruption"
+    assert event_candidate["direction"] == "negative"
+    assert event_candidate["primary_entities"] == ["NVDA"]
+    assert event_candidate["secondary_entities"] == ["SMH"]
+    assert event_candidate["source_item_ids"] == [second_raw_item_id]

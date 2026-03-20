@@ -424,6 +424,10 @@ class SqliteStore:
             """
             SELECT event_candidate_id, source_item_ids
             FROM event_candidates
+            ORDER BY
+                CASE WHEN created_at IS NULL THEN 1 ELSE 0 END,
+                created_at,
+                event_candidate_id
             """
         ).fetchall()
         for event_candidate_id, source_item_ids in rows:
@@ -432,12 +436,10 @@ class SqliteStore:
                     continue
                 connection.execute(
                     """
-                    INSERT INTO event_candidate_source_items (
+                    INSERT OR IGNORE INTO event_candidate_source_items (
                         raw_item_id,
                         event_candidate_id
                     ) VALUES (?, ?)
-                    ON CONFLICT(raw_item_id) DO UPDATE
-                    SET event_candidate_id = excluded.event_candidate_id
                     """,
                     (raw_item_id, event_candidate_id),
                 )

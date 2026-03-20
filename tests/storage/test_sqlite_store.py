@@ -430,3 +430,99 @@ def test_split_legacy_event_candidate_for_raw_item_rolls_back_on_failure(tmp_pat
 
     assert candidate_rows == [("evt-legacy", json.dumps(["raw-1", "raw-2"]))]
     assert lookup_rows == [("raw-1", "evt-legacy"), ("raw-2", "evt-legacy")]
+
+
+def test_init_db_backfill_chooses_deterministic_winner_for_duplicate_legacy_ownership(
+    tmp_path,
+):
+    database_path = tmp_path / "signal_graph.db"
+    with sqlite3.connect(database_path) as connection:
+        connection.executescript(
+            """
+            CREATE TABLE raw_source_items (
+                raw_item_id TEXT PRIMARY KEY,
+                source_tier TEXT NOT NULL,
+                source_name TEXT NOT NULL,
+                source_url TEXT,
+                fetched_at TEXT,
+                published_at TEXT,
+                raw_text TEXT NOT NULL,
+                raw_payload TEXT
+            );
+
+            CREATE TABLE event_candidates (
+                event_candidate_id TEXT PRIMARY KEY,
+                title TEXT NOT NULL,
+                event_type TEXT NOT NULL,
+                direction TEXT NOT NULL,
+                primary_entities TEXT NOT NULL,
+                dedupe_fingerprint TEXT,
+                secondary_entities TEXT NOT NULL,
+                source_item_ids TEXT NOT NULL,
+                candidate_confidence REAL NOT NULL,
+                candidate_status TEXT NOT NULL,
+                created_at TEXT
+            );
+
+            INSERT INTO raw_source_items (
+                raw_item_id,
+                source_tier,
+                source_name,
+                raw_text
+            ) VALUES ('raw-dup', 'manual', 'test', 'NVDA supplier disruption');
+
+            INSERT INTO event_candidates (
+                event_candidate_id,
+                title,
+                event_type,
+                direction,
+                primary_entities,
+                dedupe_fingerprint,
+                secondary_entities,
+                source_item_ids,
+                candidate_confidence,
+                candidate_status,
+                created_at
+            ) VALUES
+                (
+                    'evt-b',
+                    'NVDA supplier disruption',
+                    'unknown',
+                    'unknown',
+                    '[]',
+                    'fp-b',
+                    '[]',
+                    '["raw-dup"]',
+                    0.0,
+                    'pending',
+                    '2026-01-02T00:00:00+00:00'
+                ),
+                (
+                    'evt-a',
+                    'NVDA supplier disruption',
+                    'unknown',
+                    'unknown',
+                    '[]',
+                    'fp-a',
+                    '[]',
+                    '["raw-dup"]',
+                    0.0,
+                    'pending',
+                    '2026-01-01T00:00:00+00:00'
+                );
+            """
+        )
+
+    store = SqliteStore(database_path)
+    store.init_db()
+
+    with sqlite3.connect(database_path) as connection:
+        row = connection.execute(
+            """
+            SELECT raw_item_id, event_candidate_id
+            FROM event_candidate_source_items
+            WHERE raw_item_id = 'raw-dup'
+            """
+        ).fetchone()
+
+    assert row == ("raw-dup", "evt-a")
