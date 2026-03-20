@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sqlite3
 
 from signal_graph.models.events import EventCandidate
@@ -274,3 +275,158 @@ def test_init_db_backfills_raw_item_event_lookup_rows_for_existing_candidates(tm
         ).fetchall()
 
     assert rows == [("raw-1", "evt-legacy"), ("raw-2", "evt-legacy")]
+
+
+def test_init_db_does_not_rescan_backfilled_legacy_rows_with_null_created_at(
+    tmp_path,
+):
+    database_path = tmp_path / "signal_graph.db"
+    with sqlite3.connect(database_path) as connection:
+        connection.executescript(
+            """
+            CREATE TABLE raw_source_items (
+                raw_item_id TEXT PRIMARY KEY,
+                source_tier TEXT NOT NULL,
+                source_name TEXT NOT NULL,
+                source_url TEXT,
+                fetched_at TEXT,
+                published_at TEXT,
+                raw_text TEXT NOT NULL,
+                raw_payload TEXT
+            );
+
+            CREATE TABLE event_candidates (
+                event_candidate_id TEXT PRIMARY KEY,
+                title TEXT NOT NULL,
+                event_type TEXT NOT NULL,
+                direction TEXT NOT NULL,
+                primary_entities TEXT NOT NULL,
+                dedupe_fingerprint TEXT,
+                secondary_entities TEXT NOT NULL,
+                source_item_ids TEXT NOT NULL,
+                candidate_confidence REAL NOT NULL,
+                candidate_status TEXT NOT NULL,
+                created_at TEXT
+            );
+
+            CREATE TABLE event_candidate_update_log (
+                event_candidate_id TEXT NOT NULL
+            );
+
+            CREATE TRIGGER event_candidates_update_audit
+            AFTER UPDATE ON event_candidates
+            BEGIN
+                INSERT INTO event_candidate_update_log (event_candidate_id)
+                VALUES (NEW.event_candidate_id);
+            END;
+
+            INSERT INTO event_candidates (
+                event_candidate_id,
+                title,
+                event_type,
+                direction,
+                primary_entities,
+                dedupe_fingerprint,
+                secondary_entities,
+                source_item_ids,
+                candidate_confidence,
+                candidate_status,
+                created_at
+            ) VALUES (
+                'evt-backfilled',
+                'Legacy event title',
+                'unknown',
+                'unknown',
+                '[]',
+                'already-backfilled',
+                '[]',
+                '[]',
+                0.0,
+                'pending',
+                NULL
+            );
+            """
+        )
+
+    store = SqliteStore(database_path)
+
+    store.init_db()
+
+    with sqlite3.connect(database_path) as connection:
+        rows = connection.execute(
+            """
+            SELECT event_candidate_id
+            FROM event_candidate_update_log
+            """
+        ).fetchall()
+
+    assert rows == []
+
+
+def test_split_legacy_event_candidate_for_raw_item_rolls_back_on_failure(tmp_path):
+    store = SqliteStore(tmp_path / "signal_graph.db")
+    store.init_db()
+    with sqlite3.connect(tmp_path / "signal_graph.db") as connection:
+        connection.executescript(
+            """
+            INSERT INTO raw_source_items (
+                raw_item_id,
+                source_tier,
+                source_name,
+                raw_text
+            ) VALUES
+                ('raw-1', 'manual', 'test', 'NVDA supplier disruption'),
+                ('raw-2', 'manual', 'test', 'NVDA supplier disruption');
+            """
+        )
+    legacy_event_candidate = EventCandidate(
+        event_candidate_id="evt-legacy",
+        title="NVDA supplier disruption",
+        event_type="unknown",
+        direction="unknown",
+        primary_entities=[],
+        dedupe_fingerprint="fp-legacy",
+        source_item_ids=["raw-1", "raw-2"],
+    )
+    colliding_event_candidate = EventCandidate(
+        event_candidate_id="evt-legacy",
+        title="NVDA supplier disruption",
+        event_type="supplier_disruption",
+        direction="negative",
+        primary_entities=["NVDA"],
+        dedupe_fingerprint="fp-legacy",
+        secondary_entities=["SMH"],
+        source_item_ids=["raw-2"],
+    )
+
+    store.insert_event_candidate(legacy_event_candidate)
+
+    try:
+        store.split_legacy_event_candidate_for_raw_item(
+            legacy_event_candidate,
+            colliding_event_candidate,
+            raw_item_id="raw-2",
+        )
+    except sqlite3.IntegrityError:
+        pass
+    else:
+        raise AssertionError("expected split to fail")
+
+    with sqlite3.connect(tmp_path / "signal_graph.db") as connection:
+        candidate_rows = connection.execute(
+            """
+            SELECT event_candidate_id, source_item_ids
+            FROM event_candidates
+            ORDER BY event_candidate_id
+            """
+        ).fetchall()
+        lookup_rows = connection.execute(
+            """
+            SELECT raw_item_id, event_candidate_id
+            FROM event_candidate_source_items
+            ORDER BY raw_item_id
+            """
+        ).fetchall()
+
+    assert candidate_rows == [("evt-legacy", json.dumps(["raw-1", "raw-2"]))]
+    assert lookup_rows == [("raw-1", "evt-legacy"), ("raw-2", "evt-legacy")]
