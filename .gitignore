@@ -3,6 +3,7 @@
 __pycache__/
 *.py[cod]
 .signal-graph/
+.worktrees/
 
 infra/neo4j/data/*
 !infra/neo4j/data/.gitkeep
