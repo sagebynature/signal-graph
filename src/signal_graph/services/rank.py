@@ -8,11 +8,27 @@ from signal_graph.models.graph import RankedCandidate
 from signal_graph.services.timing import classify_timing
 from signal_graph.storage.sqlite import SqliteStore
 
-PATH_BASE_SCORES: dict[tuple[str, ...], float] = {
+DEFAULT_PATH_BASE_SCORES: dict[tuple[str, ...], float] = {
     ("DIRECT_ENTITY",): 0.7,
-    ("SUPPLIES",): 0.58,
+    ("SUPPLIES_TO_CUSTOMER",): 0.58,
     ("HOLDS",): 0.5,
-    ("SUPPLIES", "HOLDS"): 0.38,
+    ("SUPPLIES_TO_AFFECTED",): 0.44,
+    ("SUPPLIES_TO_CUSTOMER", "HOLDS"): 0.38,
+    ("SUPPLIES_TO_AFFECTED", "HOLDS"): 0.32,
+}
+
+EVENT_PATH_BASE_SCORES: dict[tuple[str, str], dict[tuple[str, ...], float]] = {
+    (
+        "capex_cut",
+        "negative",
+    ): {
+        ("DIRECT_ENTITY",): 0.7,
+        ("SUPPLIES_TO_AFFECTED",): 0.62,
+        ("HOLDS",): 0.5,
+        ("SUPPLIES_TO_CUSTOMER",): 0.34,
+        ("SUPPLIES_TO_AFFECTED", "HOLDS"): 0.4,
+        ("SUPPLIES_TO_CUSTOMER", "HOLDS"): 0.24,
+    }
 }
 
 
@@ -20,7 +36,7 @@ def _candidate_rows_query() -> str:
     return (
         "MATCH (e:Event {event_candidate_id: $event_candidate_id})-[:HAS_RESEARCH]->(rb:ResearchBundle) "
         "MATCH (e)-[:AFFECTS|IMPACTS]->(company:Company) "
-        "WITH rb, company, "
+        "WITH e, rb, company, "
         "     COUNT { (rb)-[:SUPPORTS]->(:Document) } AS support_count, "
         "     COUNT { (rb)-[:HAS_EVIDENCE]->(:EvidenceSpan) } AS evidence_count, "
         "     COUNT { (rb)-[:CONTRADICTED_BY]->(:Claim) } AS contradiction_count "
@@ -34,13 +50,23 @@ def _candidate_rows_query() -> str:
         "    UNION "
         "    WITH company "
         "    MATCH (company)-[:SUPPLIES]->(downstream:Company) "
-        "    RETURN downstream.ticker AS ticker, company.ticker AS matched_entity, ['SUPPLIES'] AS relationship_path, 1 AS path_length "
+        "    RETURN downstream.ticker AS ticker, company.ticker AS matched_entity, ['SUPPLIES_TO_CUSTOMER'] AS relationship_path, 1 AS path_length "
         "    UNION "
         "    WITH company "
         "    MATCH (company)-[:SUPPLIES]->(downstream:Company)<-[:HOLDS]-(instrument:Instrument) "
-        "    RETURN instrument.ticker AS ticker, company.ticker AS matched_entity, ['SUPPLIES', 'HOLDS'] AS relationship_path, 2 AS path_length "
+        "    RETURN instrument.ticker AS ticker, company.ticker AS matched_entity, ['SUPPLIES_TO_CUSTOMER', 'HOLDS'] AS relationship_path, 2 AS path_length "
+        "    UNION "
+        "    WITH company "
+        "    MATCH (upstream:Company)-[:SUPPLIES]->(company) "
+        "    RETURN upstream.ticker AS ticker, company.ticker AS matched_entity, ['SUPPLIES_TO_AFFECTED'] AS relationship_path, 1 AS path_length "
+        "    UNION "
+        "    WITH company "
+        "    MATCH (upstream:Company)-[:SUPPLIES]->(company)<-[:HOLDS]-(instrument:Instrument) "
+        "    RETURN instrument.ticker AS ticker, company.ticker AS matched_entity, ['SUPPLIES_TO_AFFECTED', 'HOLDS'] AS relationship_path, 2 AS path_length "
         "} "
         "RETURN ticker, matched_entity, relationship_path, path_length, "
+        "       e.event_type AS event_type, "
+        "       e.direction AS direction, "
         "       toFloat(rb.research_confidence) AS research_confidence, "
         "       support_count, evidence_count, contradiction_count"
     )
@@ -50,15 +76,25 @@ def _clamp_score(value: float) -> float:
     return max(0.0, min(1.0, round(value, 2)))
 
 
+def _base_score(event_type: str, direction: str, relationship_path: list[str]) -> float:
+    event_overrides = EVENT_PATH_BASE_SCORES.get((event_type, direction), {})
+    return event_overrides.get(
+        tuple(relationship_path),
+        DEFAULT_PATH_BASE_SCORES.get(tuple(relationship_path), 0.32),
+    )
+
+
 def _score_candidate(row: dict[str, Any]) -> RankedCandidate:
     relationship_path = list(row["relationship_path"])
     path_length = int(row["path_length"])
+    event_type = str(row.get("event_type", ""))
+    direction = str(row.get("direction", ""))
     research_confidence = float(row["research_confidence"])
     support_count = int(row["support_count"])
     evidence_count = int(row["evidence_count"])
     contradiction_count = int(row["contradiction_count"])
 
-    base_score = PATH_BASE_SCORES.get(tuple(relationship_path), 0.32)
+    base_score = _base_score(event_type, direction, relationship_path)
 
     evidence_bonus = min(
         0.25,
@@ -76,7 +112,7 @@ def _score_candidate(row: dict[str, Any]) -> RankedCandidate:
         ticker=str(row["ticker"]),
         fast_reaction_score=fast_reaction_score,
         follow_through_score=follow_through_score,
-        timing_window=classify_timing(relationship_path),
+        timing_window=classify_timing(relationship_path, event_type, direction),
         matched_entity=str(row["matched_entity"]),
         relationship_path=relationship_path,
         reason_summary=(
