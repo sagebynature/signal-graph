@@ -28,6 +28,7 @@ def _print_check(name: str, status: str, detail: str | None = None) -> None:
 def doctor() -> None:
     config_path = get_default_config_path()
     checks_ok = True
+    config_valid = True
 
     try:
         if config_path.exists():
@@ -38,13 +39,17 @@ def doctor() -> None:
     except ValueError as exc:
         _print_check("config", "error", str(exc))
         checks_ok = False
+        config_valid = False
 
-    try:
-        get_neo4j_config()
-        _print_check("neo4j auth", "ok")
-    except ValueError as exc:
-        _print_check("neo4j auth", "error", str(exc))
-        checks_ok = False
+    if config_valid:
+        try:
+            get_neo4j_config()
+            _print_check("neo4j auth", "ok")
+        except ValueError as exc:
+            _print_check("neo4j auth", "error", str(exc))
+            checks_ok = False
+    else:
+        _print_check("neo4j auth", "skipped", "config invalid")
 
     runtime_checks = {
         "docker": _docker_compose_available(),

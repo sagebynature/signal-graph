@@ -46,6 +46,7 @@ def test_doctor_fails_when_config_exists_but_is_invalid(monkeypatch, tmp_path):
     assert result.exit_code == 1
     assert "config: error" in result.stdout.lower()
     assert "invalid config toml" in result.stdout.lower()
+    assert "neo4j auth: skipped (config invalid)" in result.stdout.lower()
 
 
 def test_doctor_fails_when_config_path_is_unreadable(monkeypatch, tmp_path):
@@ -65,6 +66,7 @@ def test_doctor_fails_when_config_path_is_unreadable(monkeypatch, tmp_path):
     assert result.exit_code == 1
     assert "config: error" in result.stdout.lower()
     assert "unable to read config" in result.stdout.lower()
+    assert "neo4j auth: skipped (config invalid)" in result.stdout.lower()
 
 
 def test_doctor_fails_when_required_runtime_tooling_is_missing(monkeypatch, tmp_path):
