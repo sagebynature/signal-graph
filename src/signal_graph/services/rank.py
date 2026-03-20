@@ -5,40 +5,9 @@ from typing import Any
 from signal_graph.config import DEFAULT_PROJECT_DIR
 from signal_graph.graph.client import GraphClient
 from signal_graph.models.graph import RankedCandidate
+from signal_graph.services.scoring_policy import get_scoring_policy
 from signal_graph.services.timing import classify_timing
 from signal_graph.storage.sqlite import SqliteStore
-
-DEFAULT_PATH_BASE_SCORES: dict[tuple[str, ...], float] = {
-    ("DIRECT_ENTITY",): 0.7,
-    ("SUPPLIES_TO_CUSTOMER",): 0.58,
-    ("HOLDS",): 0.5,
-    ("SUPPLIES_TO_AFFECTED",): 0.44,
-    ("SUPPLIES_TO_CUSTOMER", "HOLDS"): 0.38,
-    ("SUPPLIES_TO_AFFECTED", "HOLDS"): 0.32,
-}
-
-EVENT_PATH_BASE_SCORES: dict[tuple[str, str], dict[tuple[str, ...], float]] = {
-    (
-        "capex_cut",
-        "negative",
-    ): {
-        ("DIRECT_ENTITY",): 0.7,
-        ("SUPPLIES_TO_AFFECTED",): 0.62,
-        ("HOLDS",): 0.5,
-        ("SUPPLIES_TO_CUSTOMER",): 0.34,
-        ("SUPPLIES_TO_AFFECTED", "HOLDS"): 0.4,
-        ("SUPPLIES_TO_CUSTOMER", "HOLDS"): 0.24,
-    }
-}
-
-PATH_DESCRIPTIONS: dict[tuple[str, ...], str] = {
-    ("DIRECT_ENTITY",): "direct company exposure",
-    ("HOLDS",): "ETF holding exposure",
-    ("SUPPLIES_TO_CUSTOMER",): "downstream customer spillover",
-    ("SUPPLIES_TO_AFFECTED",): "upstream supplier exposure",
-    ("SUPPLIES_TO_CUSTOMER", "HOLDS"): "ETF exposure to downstream customer spillover",
-    ("SUPPLIES_TO_AFFECTED", "HOLDS"): "ETF exposure to upstream supplier pressure",
-}
 
 
 def _candidate_rows_query() -> str:
@@ -85,14 +54,6 @@ def _clamp_score(value: float) -> float:
     return max(0.0, min(1.0, round(value, 2)))
 
 
-def _base_score(event_type: str, direction: str, relationship_path: list[str]) -> float:
-    event_overrides = EVENT_PATH_BASE_SCORES.get((event_type, direction), {})
-    return event_overrides.get(
-        tuple(relationship_path),
-        DEFAULT_PATH_BASE_SCORES.get(tuple(relationship_path), 0.32),
-    )
-
-
 def _score_candidate(row: dict[str, Any]) -> RankedCandidate:
     relationship_path = list(row["relationship_path"])
     path_length = int(row["path_length"])
@@ -103,7 +64,12 @@ def _score_candidate(row: dict[str, Any]) -> RankedCandidate:
     evidence_count = int(row["evidence_count"])
     contradiction_count = int(row["contradiction_count"])
 
-    base_score = _base_score(event_type, direction, relationship_path)
+    resolved_policy = get_scoring_policy().resolve(
+        relationship_path,
+        event_type=event_type,
+        direction=direction,
+    )
+    base_score = resolved_policy.base_score
 
     evidence_bonus = min(
         0.25,
@@ -116,9 +82,6 @@ def _score_candidate(row: dict[str, Any]) -> RankedCandidate:
     follow_through_score = _clamp_score(
         fast_reaction_score - 0.1 + (0.05 if path_length > 0 else 0.0)
     )
-    path_description = PATH_DESCRIPTIONS.get(
-        tuple(relationship_path), "graph relationship exposure"
-    )
 
     return RankedCandidate(
         ticker=str(row["ticker"]),
@@ -127,7 +90,10 @@ def _score_candidate(row: dict[str, Any]) -> RankedCandidate:
         timing_window=classify_timing(relationship_path, event_type, direction),
         matched_entity=str(row["matched_entity"]),
         relationship_path=relationship_path,
-        reason_summary=f"{row['ticker']} is exposed to {row['matched_entity']} via {path_description}",
+        reason_summary=(
+            f"{row['ticker']} is exposed to {row['matched_entity']} via "
+            f"{resolved_policy.description}"
+        ),
     )
 
 
