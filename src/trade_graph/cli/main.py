@@ -5,7 +5,10 @@ from importlib.metadata import version as package_version
 import typer
 
 from trade_graph.cli.doctor import doctor
+from trade_graph.cli.fetch import fetch
 from trade_graph.cli.init import init
+from trade_graph.cli.normalize import normalize
+from trade_graph.cli.submit import submit
 
 
 app = typer.Typer(add_completion=False)
@@ -22,7 +25,10 @@ def version() -> None:
 
 
 app.command()(doctor)
+app.command()(fetch)
 app.command()(init)
+app.command()(normalize)
+app.command()(submit)
 
 
 if __name__ == "__main__":

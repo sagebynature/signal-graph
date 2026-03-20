@@ -1,0 +1,31 @@
+from __future__ import annotations
+
+from hashlib import sha256
+
+from trade_graph.models.events import EventCandidate
+from trade_graph.models.source import RawSourceItem
+from trade_graph.storage.sqlite import SqliteStore
+
+
+def normalize_raw_item(raw_item: RawSourceItem) -> EventCandidate:
+    normalized_title = raw_item.raw_text.strip()
+    fingerprint = sha256(normalized_title.lower().encode()).hexdigest()
+    return EventCandidate(
+        event_candidate_id=f"evt-{fingerprint[:12]}",
+        title=normalized_title,
+        event_type="unknown",
+        direction="unknown",
+        primary_entities=[],
+        dedupe_fingerprint=fingerprint,
+        source_item_ids=[raw_item.raw_item_id],
+    )
+
+
+def normalize_and_persist_raw_item(store: SqliteStore, raw_item_id: str) -> EventCandidate:
+    raw_item = store.get_raw_source_item(raw_item_id)
+    if raw_item is None:
+        raise ValueError(f"raw item not found: {raw_item_id}")
+
+    event_candidate = normalize_raw_item(raw_item)
+    store.insert_event_candidate(event_candidate)
+    return event_candidate
