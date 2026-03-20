@@ -1,6 +1,6 @@
 ---
 name: signal-graph
-description: Operate the local Signal Graph trading-research toolkit through its supported CLI workflow. Use when agent needs to capture or fetch market events, normalize them into event candidates, attach provenance-backed research, ingest them into the graph layer, rank likely instruments, explain candidates in memo form, or troubleshoot local Signal Graph runtime and workflow issues.
+description: Operate the local Signal Graph trading-research toolkit through its supported CLI workflow. Use when an agent needs to analyze a market event, capture or fetch source items, normalize them into event candidates, attach provenance-backed research, ingest them into the graph layer, rank likely instruments or ETFs, write memo output, adapt analyst prompts, or troubleshoot local Signal Graph runtime and workflow issues.
 ---
 
 # Signal Graph
@@ -32,6 +32,42 @@ Follow these rules:
 - Distinguish confirmed fact, graph implication, and assistant inference in every written explanation.
 - Treat contradictions as part of the record, not noise to suppress.
 - Avoid presenting rank output as trading advice. It is decision-support output.
+
+## Analyst Prompting Pattern
+
+When the user wants research output rather than low-level CLI help, structure the task the same way the analyst prompt pack does.
+
+Base operating pattern:
+
+- capture or locate the source item
+- normalize it into a clean event candidate
+- attach supporting evidence, contradictions, and confidence context
+- ingest for graph reasoning
+- rank candidate expressions
+- produce a memo
+
+Default final-output contract:
+
+- `Event Record`: event summary, primary entity, event type, direction, confirmed facts, unresolved assumptions
+- `Evidence And Contradictions`: supporting evidence with provenance, contradictory evidence, research confidence
+- `Ranked Candidates`: ticker, name, score or relative rank, timing window, matched entity, relationship path, short reason summary
+- `Memo`: separate `Confirmed Facts`, `Graph Implications`, and `Analyst Inference`
+
+If the user needs prompt wording or reusable analyst prompts, read `../../docs/prompts/signal-graph-analyst-prompt-pack.md` and reuse its base prompt plus the closest task module.
+
+Map common analyst intents to these modes:
+
+- rapid first pass -> `Rapid Triage`
+- second-order names or ETF exposure -> `Spillover Map`
+- fresh headline with uncertainty -> `Breaking News Review`
+- contested thesis -> `Bull vs Bear Case`
+- side-by-side event framing -> `Compare Two Narratives`
+- ETF-focused expression -> `ETF Read-Through`
+- reuse stored work -> `Existing Research Replay`
+- sparse or suspicious output -> `Weak Signal Diagnosis`
+- scoring-policy comparison -> `Policy Sensitivity Check`
+- chain integrity check -> `Provenance Audit`
+- senior-reader summary -> `Executive Summary Memo`
 
 ## Stage Guide
 
@@ -105,11 +141,21 @@ Check `.signal-graph/config.toml` before comparing ranking or memo results acros
 
 Use `make neo4j-up` and `make neo4j-down` to manage the local Neo4j runtime. If Neo4j auth changes unexpectedly, inspect `NEO4J_AUTH` and the persisted data under `infra/neo4j/data`.
 
-If ranking looks empty or weak, confirm the normalized event has a strong primary entity and that the entity exists in the current seeded graph universe before assuming the algorithm is broken.
+If ranking looks empty or weak, do not assume the graph should already contain the needed entities or relationships. Start from the possibility of a fresh local graph and check, in order:
+
+- whether the event framing is specific enough
+- whether the primary entity resolves cleanly
+- whether the research bundle contains actual evidence and contradictions
+- whether local graph state is missing the needed coverage
+- whether local scoring policy is distorting the result
+
+Use the same root-cause style as `Weak Signal Diagnosis`: explain the failure mode in plain English before rerunning or changing the workflow.
 
 ## Read More Only When Needed
 
 Read `../../docs/runbooks/analyst-agent-guide.md` when operating the pipeline as an analyst or agent.
+
+Read `../../docs/prompts/signal-graph-analyst-prompt-pack.md` when the task is prompt design, analyst workflow guidance, memo-shape guidance, or event-analysis framing.
 
 Read `../../docs/runbooks/operator-guide.md` when debugging environment, Neo4j, or local config issues.
 
