@@ -1,6 +1,6 @@
 # Signal Graph Analyst Prompt Pack
 
-This playbook is for non-technical analysts using `Signal Graph` as a structured research workflow rather than a coding surface.
+This pack is for non-technical analysts using `Signal Graph` as a structured research workflow rather than a coding surface.
 
 Core operating model:
 
@@ -16,76 +16,174 @@ This document complements:
 
 Use this pack when you want to turn a messy market event into a repeatable chain of:
 
-- captured source material
+- source capture
 - structured event framing
-- evidence and contradictions
+- supporting evidence and contradictions
 - graph-based spillover reasoning
 - ranked expressions
 - memo output
 
 The output is decision-support research. It is not trading advice.
 
-## Current Scope Note
+## Best Fit
 
-In practice, Signal Graph works best when the event has:
+Signal Graph is strongest when the event has:
 
 - one clear primary entity
 - a clear positive or negative direction
-- a plausible spillover path to related companies, ETFs, suppliers, customers, or themes
-- enough public evidence to support both a thesis and any contradictions
+- a plausible spillover path to related companies or ETFs
+- enough public evidence to support both a thesis and at least one counterpoint
 
-## Prompt Pack
+Assume the operator may be starting from a fresh local graph with little or no prior state. The prompt should therefore make the event framing, evidence needs, and desired output explicit instead of assuming relevant entities or relationships already exist locally.
 
-### 1. Rapid Triage
+## How To Use This Pack
 
-Use when: you have one headline or event note and need a fast first-pass view of what matters.
+1. Start with the `Base Analyst Prompt`.
+2. Add one task module from `Prompt Library`.
+3. Replace the bracketed fields.
+4. If the output is thin or confusing, run `Weak Signal Diagnosis` or `Provenance Audit`.
+
+## Base Analyst Prompt
+
+Use this base block for every workflow. It makes the prompt pack more consistent and keeps the output aligned with the actual CLI pipeline.
 
 ```text
-Use Signal Graph to analyze this market event quickly but rigorously. Capture the event, structure it into a clean event record, attach supporting research and at least one counterpoint, then rank the most relevant stocks or ETFs and produce a short memo. In the final output, clearly separate confirmed facts, graph-based implications, and your own inference. Present the result as research support, not trading advice.
+Use Signal Graph as a provenance-aware research workflow, not as a chat-style summary tool.
+
+Work in this order:
+1. Capture or locate the source item for the event.
+2. Normalize it into a clean event candidate.
+3. Attach supporting evidence, contradictions, and confidence context.
+4. Ingest the researched event for graph reasoning.
+5. Rank the most relevant candidate expressions.
+6. Produce a memo.
+
+Operating rules:
+- Prefer already stored local state before fetching new information.
+- If local scoring policy is active, say so explicitly because it can change rank order, timing windows, and memo wording.
+- Never blur confirmed fact, graph implication, and your own inference.
+- Treat contradictions as part of the record, not as noise to hide.
+- Present the result as decision-support research, not trading advice.
+
+Return the final answer in this structure:
+
+## Event Record
+- Event summary
+- Primary entity
+- Event type
+- Direction
+- What is confirmed
+- What is assumed or unresolved
+
+## Evidence And Contradictions
+- Supporting evidence with provenance
+- Contradictory evidence or uncertainty
+- Research confidence
+
+## Ranked Candidates
+For each candidate include:
+- ticker
+- company or ETF name
+- score or relative rank
+- timing window
+- matched entity
+- relationship path
+- short reason summary
+
+## Memo
+Write a concise memo that clearly separates:
+- Confirmed Facts
+- Graph Implications
+- Analyst Inference
 
 == Event ==
 [insert event]
+
+== Preferences ==
+Asset universe: [single names | ETFs | both]
+Memo length: [short | standard | executive]
+Fetch policy: [local first | allow web if needed]
+```
+
+## Prompt Library
+
+Each module below is designed to be appended after the `Base Analyst Prompt`.
+
+### 1. Rapid Triage
+
+Use when: you have one headline or event note and need a fast first pass.
+
+```text
+Priority: speed with discipline.
+
+Focus on:
+- the cleanest event framing
+- the most relevant evidence
+- at least one serious counterpoint
+- the top 3 candidate expressions
+
+Keep the memo short and decision-oriented.
 ```
 
 ### 2. Spillover Map
 
-Use when: the first-order reaction is obvious, but you want to find second-order names or thematic exposures.
+Use when: the first-order reaction is obvious, but you want second-order names or ETF exposure.
 
 ```text
-Use Signal Graph to map the full market spillover from this event. I do not want only the obvious direct exposure. Show me the direct company impact, related ETFs, and any second-order supplier, customer, or ecosystem effects that appear in the graph reasoning. Explain why each candidate appears and what relationship path supports it.
+Priority: propagation logic.
 
-== Event ==
-[insert event]
+Do not stop at the obvious direct exposure. Show:
+- direct company impact
+- related ETFs
+- second-order supplier, customer, peer, or ecosystem effects
+
+For each ranked candidate, explain the relationship path that makes it relevant.
 ```
 
 ### 3. Breaking News Review
 
-Use when: you want a more rigorous version of headline triage with explicit uncertainty handling.
+Use when: the event is fresh and you need explicit uncertainty handling.
 
 ```text
-Use Signal Graph to treat this as breaking-news triage. Turn the headline into a structured event, attach evidence, include any contradictions or uncertainty, then rank the most relevant expressions and generate a memo. I want a decision-support summary that tells me what is known, what the graph suggests, and what remains uncertain.
+Priority: what is known now versus what still needs confirmation.
 
-== Event ==
-[insert event]
+Be strict about uncertainty:
+- identify what is actually confirmed
+- identify what comes from early or incomplete reporting
+- include at least one contradiction or missing-data warning
+
+If the event is too underdeveloped for strong ranking, say so plainly.
 ```
 
 ### 4. Bull vs Bear Case
 
-Use when: the event is contested, ambiguous, or likely to produce overconfident storytelling.
+Use when: the event is contested, ambiguous, or likely to attract overconfident storytelling.
 
 ```text
-Use Signal Graph to evaluate both sides of this event hypothesis. Build the research record with supporting evidence and contradictory evidence, then continue through ranking and memo generation. The final output should preserve both the bullish and bearish interpretation instead of collapsing everything into a single conclusion.
+Priority: preserve both sides of the case.
 
-== Event ==
-[insert event]
+Build the research record so the final memo includes:
+- the strongest bull interpretation
+- the strongest bear interpretation
+- which ranked candidates benefit under each interpretation
+
+Do not collapse the final answer into one forced conclusion if the evidence is mixed.
 ```
 
 ### 5. Compare Two Narratives
 
-Use when: you want to understand how different event types create different market read-throughs.
+Use when: you want to compare two possible event framings or two competing reads of the same situation.
 
 ```text
-Use Signal Graph to compare these two event hypotheses side by side. Run each through the full workflow and compare the ranked candidates, timing windows, and memo narratives. Make it easy to see how different event types produce different market read-throughs, while keeping facts separate from implications and inference.
+Run the workflow separately for both narratives, then compare them side by side.
+
+For the comparison, show:
+- differences in event framing
+- differences in supporting evidence and contradictions
+- differences in ranked candidates
+- differences in likely timing windows
+
+Make it easy to see whether the ranking changed because the narrative changed or because the evidence quality changed.
 
 == Event A ==
 [insert event A]
@@ -99,37 +197,63 @@ Use Signal Graph to compare these two event hypotheses side by side. Run each th
 Use when: you care more about sector or thematic expression than single-name exposure.
 
 ```text
-Use Signal Graph to identify the best ETF-based expression of this event. I want the output to focus on sector or thematic ETF exposure rather than only single-name equities. Show which ETFs rank highest, why they rank, what graph path supports them, and whether the likely reaction window is immediate or short-drift.
+Priority: ETF expression over individual equities.
 
-== Event ==
-[insert event]
+Rank ETFs first. If single names appear, use them only as supporting context.
+
+For each ETF candidate, explain:
+- why it ranks
+- which entities or themes drive the exposure
+- whether the likely reaction window is immediate, short-drift, or slower-developing
 ```
 
 ### 7. Existing Research Replay
 
-Use when: you want to reuse local work instead of starting a fresh research cycle.
+Use when: you want to reuse stored local work instead of starting a fresh research cycle.
 
 ```text
-Use Signal Graph to work only from the research that is already stored locally. Find the most recent relevant event, review its evidence and graph relationships, rerun ranking if needed, and generate a fresh memo for the strongest candidate. Do not fetch new information unless local state is missing. Tell me exactly what stored research the conclusion relies on.
+Work from local stored state first.
+
+Find the most recent relevant event, review its evidence and graph relationships, rerun ranking if needed, and generate a fresh memo for the strongest candidate.
+
+Do not fetch new information unless local state is missing or clearly stale.
+
+Tell me exactly which stored artifacts the final conclusion relies on.
 ```
 
 ### 8. Weak Signal Diagnosis
 
-Use when: the output looks thin, unconvincing, or strangely empty and you want a root-cause explanation.
+Use when: the output looks thin, unconvincing, or oddly empty.
 
 ```text
-Use Signal Graph to investigate why the output for this event looks weak, sparse, or unconvincing. Check whether the event was structured clearly enough, whether the key entity is recognized in the graph, and whether local policy settings may be affecting the result. If you identify the problem, fix it and rerun the workflow. Explain the root cause in plain English.
+Treat this as a root-cause diagnosis.
 
-== Event ==
-[insert event]
+Check:
+- whether the event was framed clearly enough
+- whether the primary entity resolves cleanly
+- whether evidence and contradictions were actually attached
+- whether graph coverage is too weak for this entity or theme
+- whether local scoring policy is affecting the result
+
+If you identify the problem, fix what you can and rerun the workflow.
+
+Explain the root cause in plain English before giving the rerun result.
 ```
 
 ### 9. Policy Sensitivity Check
 
-Use when: you want to understand how much the ranking depends on local scoring assumptions.
+Use when: you want to see how much the ranking depends on local scoring assumptions.
 
 ```text
-Use Signal Graph to show how local scoring policy changes the interpretation of this event: "[insert event]." Review the current local scoring settings, adjust them for this type of event, rerun the ranking, and compare the before-and-after results. Be explicit about which differences come from local policy choices rather than from new evidence.
+Treat this as a before-versus-after comparison.
+
+Review the active local scoring policy, adjust it for this event type, rerun ranking, and compare the results.
+
+Be explicit about:
+- which settings changed
+- which candidates moved
+- whether timing windows changed
+- which differences come from policy rather than new evidence
 ```
 
 ### 10. Provenance Audit
@@ -137,34 +261,48 @@ Use Signal Graph to show how local scoring policy changes the interpretation of 
 Use when: you need to verify that the research chain is complete and internally consistent.
 
 ```text
-Use Signal Graph to audit the full research chain for this event. Verify that the original source item, structured event, research bundle, graph event, ranked candidates, and final memo all exist and connect properly. If any stage is missing or inconsistent, stop and explain exactly where the chain breaks.
+Audit the full workflow chain for this event.
 
-== Event ==
-[insert event]
+Verify that all of these exist and connect properly:
+- original source item
+- normalized event candidate
+- research bundle
+- graph event
+- ranked candidates
+- final memo artifact
+
+If any stage is missing, inconsistent, or unsupported by stored provenance, stop and explain exactly where the chain breaks.
 ```
 
 ### 11. Executive Summary Memo
 
-Use when: you want the output condensed into something a PM, portfolio manager, or research lead can scan quickly.
+Use when: you want the output condensed for a PM, portfolio manager, or research lead.
 
 ```text
-Use Signal Graph to produce an executive-ready memo for this event: "[insert event]." Run the full workflow, then write a concise final summary that highlights the event, strongest candidate expressions, main supporting evidence, key contradictions, likely timing window, and remaining uncertainty. Keep the tone analytical and decision-support oriented.
+Priority: scanability for a senior reader.
+
+Run the full workflow, then end with an executive-ready memo that highlights:
+- the event
+- strongest candidate expressions
+- main supporting evidence
+- key contradictions
+- likely timing window
+- remaining uncertainty
+
+Keep the tone analytical and concise.
 ```
 
 ## Best Event Types For Signal Graph
 
 Signal Graph is strongest when the event can be structured cleanly and has believable spillover paths. Good fits include:
 
-- regulatory actions affecting a named company or industry
-- export restrictions, sanctions, or tariff changes
-- production cuts, capacity additions, or capex changes
-- plant outages, labor strikes, or supply disruptions
-- product recalls or major operational failures
-- mergers, divestitures, and strategic partnerships
-- clinical-trial updates or FDA actions
-- pricing actions with likely supplier, customer, or ETF read-through
-- commodity shocks linked to a specific producer, geography, or downstream industry
+- export restrictions or sanctions affecting a named company or supply chain
+- capex cuts or capacity expansions
+- plant outages, labor actions, or supply disruptions
+- pricing changes with supplier, customer, or ETF read-through
+- product delays, shipment constraints, or operational failures
 - large customer wins or losses with ecosystem implications
+- regulatory actions tied to a specific company or subsector
 
 Signal Graph is usually weaker when the event is too broad or too detached from identifiable entities and relationships, such as:
 
@@ -173,62 +311,123 @@ Signal Graph is usually weaker when the event is too broad or too detached from 
 - pure valuation arguments without an event trigger
 - sentiment-only narratives that do not map to a concrete event
 
-## Filled-In Industry Examples
+## Copy-Paste Full Prompt Examples
 
-These examples are useful prompt templates for analysts, even if the current local graph universe may need extension before they produce strong end-to-end ranking output.
+These examples are written as realistic copy-paste starting points. They do not assume that a particular graph universe is already preloaded.
 
-### Example 1. Energy Shock
+### Example 1. TSMC Capex Cut
 
-Best for: rapid triage, spillover mapping, ETF read-through
+Best for: `Rapid Triage`, `Spillover Map`
 
 ```text
-Use Signal Graph to analyze this market event quickly but rigorously: "OPEC announces deeper oil production cuts." Capture the event, structure it into a clean event record, attach supporting research and at least one counterpoint, then rank the most relevant stocks or ETFs and produce a short memo. In the final output, clearly separate confirmed facts, graph-based implications, and your own inference. Present the result as research support, not trading advice.
+Use Signal Graph as a provenance-aware research workflow, not as a chat-style summary tool.
+
+Work in this order:
+1. Capture or locate the source item for the event.
+2. Normalize it into a clean event candidate.
+3. Attach supporting evidence, contradictions, and confidence context.
+4. Ingest the researched event for graph reasoning.
+5. Rank the most relevant candidate expressions.
+6. Produce a memo.
+
+Operating rules:
+- Prefer already stored local state before fetching new information.
+- Never blur confirmed fact, graph implication, and your own inference.
+- Treat contradictions as part of the record, not as noise to hide.
+- Present the result as decision-support research, not trading advice.
+
+Focus on a fast first pass with the top 3 candidate expressions.
+
+== Event ==
+TSMC signals a meaningful capex reduction for the next planning cycle because end-market demand remains weaker than expected.
+
+== Preferences ==
+Asset universe: both
+Memo length: short
+Fetch policy: local first
 ```
 
-### Example 2. Biotech Regulatory Risk
+### Example 2. NVDA Export Restriction Review
 
-Best for: breaking-news review, bull vs bear case
+Best for: `Breaking News Review`, `Bull vs Bear Case`
 
 ```text
-Use Signal Graph to treat this as breaking-news triage: "The FDA places a clinical hold on a mid-stage biotech trial." Turn the headline into a structured event, attach evidence, include any contradictions or uncertainty, then rank the most relevant expressions and generate a memo. I want a decision-support summary that tells me what is known, what the graph suggests, and what remains uncertain.
+Use Signal Graph as a provenance-aware research workflow, not as a chat-style summary tool.
+
+Run the event through source capture, normalization, research, ingest, ranking, and memo generation.
+
+Be strict about uncertainty:
+- identify what is confirmed
+- identify what still comes from incomplete reporting
+- include both the strongest bull and bear interpretation
+
+In the final memo, separate Confirmed Facts, Graph Implications, and Analyst Inference.
+
+== Event ==
+U.S. authorities appear to be expanding AI chip export controls in ways that could further constrain NVDA shipments into China.
+
+== Preferences ==
+Asset universe: both
+Memo length: standard
+Fetch policy: allow web if needed
 ```
 
-### Example 3. Airline Operations Disruption
+### Example 3. ASML Shipment Delay ETF Read-Through
 
-Best for: spillover mapping, compare two narratives
+Best for: `ETF Read-Through`
 
 ```text
-Use Signal Graph to map the full market spillover from this event: "A major airline grounds part of its fleet after an engine inspection directive." I do not want only the obvious direct exposure. Show me the direct company impact, related ETFs, and any second-order supplier, customer, or ecosystem effects that appear in the graph reasoning. Explain why each candidate appears and what relationship path supports it.
+Use Signal Graph as a provenance-aware research workflow, not as a chat-style summary tool.
+
+Rank ETFs first and use single names only as supporting context.
+
+For each ETF candidate, explain:
+- why it ranks
+- which entities or themes drive the exposure
+- whether the likely reaction window is immediate, short-drift, or slower-developing
+
+In the final memo, separate Confirmed Facts, Graph Implications, and Analyst Inference.
+
+== Event ==
+ASML reports a meaningful shipment delay for advanced lithography systems, creating concern about downstream semiconductor equipment timing.
+
+== Preferences ==
+Asset universe: ETFs
+Memo length: standard
+Fetch policy: local first
 ```
 
-### Example 4. Mining Supply Disruption
+### Example 4. Intel Delay Provenance Audit
 
-Best for: rapid triage, weak signal diagnosis
-
-```text
-Use Signal Graph to analyze this market event quickly but rigorously: "A labor strike shuts down a major copper mine in Chile." Capture the event, structure it into a clean event record, attach supporting research and at least one counterpoint, then rank the most relevant stocks or ETFs and produce a short memo. In the final output, clearly separate confirmed facts, graph-based implications, and your own inference. Present the result as research support, not trading advice.
-```
-
-### Example 5. Payments Regulation
-
-Best for: policy sensitivity check, executive summary memo
+Best for: `Provenance Audit`, `Weak Signal Diagnosis`
 
 ```text
-Use Signal Graph to show how local scoring policy changes the interpretation of this event: "A regulator proposes tighter interchange fee caps for major card networks." Review the current local scoring settings, adjust them for this type of event, rerun the ranking, and compare the before-and-after results. Be explicit about which differences come from local policy choices rather than from new evidence.
-```
+Use Signal Graph to audit and, if needed, diagnose the workflow output for this event.
 
-### Example 6. Consumer Health Retail Restructuring
+Verify that all of these exist and connect properly:
+- original source item
+- normalized event candidate
+- research bundle
+- graph event
+- ranked candidates
+- final memo artifact
 
-Best for: executive summary memo, provenance audit
+If the chain is weak, explain whether the problem comes from event framing, entity resolution, missing evidence, graph coverage, or local scoring policy. Fix what you can and rerun the workflow.
 
-```text
-Use Signal Graph to produce an executive-ready memo for this event: "A national pharmacy chain announces a large wave of store closures." Run the full workflow, then write a concise final summary that highlights the event, strongest candidate expressions, main supporting evidence, key contradictions, likely timing window, and remaining uncertainty. Keep the tone analytical and decision-support oriented.
+== Event ==
+Intel appears to be delaying a key foundry milestone, raising questions about spillover to peers and semiconductor ETFs.
+
+== Preferences ==
+Asset universe: both
+Memo length: short
+Fetch policy: local first
 ```
 
 ## How To Choose Quickly
 
-If you only remember three options:
+If you only remember four options:
 
 - use `Rapid Triage` for first-pass event review
 - use `Spillover Map` when you want second-order names and ETFs
+- use `Weak Signal Diagnosis` when the result looks suspiciously thin
 - use `Provenance Audit` when you need to trust the chain before trusting the conclusion
