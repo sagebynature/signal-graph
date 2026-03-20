@@ -78,12 +78,31 @@ Neo4j data, logs, and plugins live under `./infra/neo4j/`.
 ```bash
 uv run signal-graph init
 uv run signal-graph submit --text "TSMC cuts capex"
-uv run signal-graph normalize --raw-item raw-123
-uv run signal-graph research --event-candidate evt-123
+uv run signal-graph normalize \
+  --raw-item raw-123 \
+  --event-type capex_cut \
+  --direction negative \
+  --primary-entity TSMC
+uv run signal-graph research --event-candidate evt-123 --bundle-file bundle.json
 uv run signal-graph ingest --event-candidate evt-123
 uv run signal-graph rank --event ge-123
 uv run signal-graph explain --event ge-123 --candidate SMH
 ```
+
+Example `bundle.json`:
+
+```json
+{
+  "supporting_documents": ["https://example.com/tsmc-capex"],
+  "contradictions": ["Demand recovery may offset the capex cut."],
+  "entity_resolution_results": {"TSMC": "company:TSMC"},
+  "evidence_spans": ["TSMC said it would reduce capital spending."],
+  "research_confidence": 0.7,
+  "research_notes": "Capex cuts often pressure semiconductor equipment demand."
+}
+```
+
+`research` now expects either `--bundle-file` or an explicit `--allow-empty`. Empty placeholder bundles are no longer the default.
 
 ## Documentation Map
 
@@ -113,7 +132,11 @@ The repository currently provides:
 
 - local CLI commands for `doctor`, `init`, `submit`, `fetch`, `normalize`, `research`, `ingest`, `rank`, and `explain`
 - a deterministic local test path for the manual event flow
-- stubbed graph and connector behavior suitable for an MVP and for agent-operable workflows
+- persisted `fetch` and `submit` intake into SQLite under `.signal-graph/signal_graph.db`
+- structured research bundles with stored support URLs, contradictions, evidence spans, and confidence
+- a Neo4j-backed graph ingest path with a seeded semiconductor reference graph
+- graph-based ranking that returns path-aware candidate reasons such as direct entity, ETF holdings, and supplier spillover
+- memo generation that cites stored evidence and separates confirmed fact, graph implication, and assistant inference
 
 This is not yet a production trading system. It is a structured local research toolkit and integration base.
 

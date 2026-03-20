@@ -25,8 +25,12 @@ Do not skip `research`. It is the provenance gate for downstream graph and memo 
 ```bash
 uv run signal-graph init
 uv run signal-graph submit --text "TSMC cuts capex"
-uv run signal-graph normalize --raw-item raw-123
-uv run signal-graph research --event-candidate evt-123
+uv run signal-graph normalize \
+  --raw-item raw-123 \
+  --event-type capex_cut \
+  --direction negative \
+  --primary-entity TSMC
+uv run signal-graph research --event-candidate evt-123 --bundle-file bundle.json
 uv run signal-graph ingest --event-candidate evt-123
 uv run signal-graph rank --event ge-123
 uv run signal-graph explain --event ge-123 --candidate SMH
@@ -37,12 +41,33 @@ uv run signal-graph explain --event ge-123 --candidate SMH
 ```bash
 uv run signal-graph init
 uv run signal-graph fetch --source web --query "chip export restriction"
-uv run signal-graph normalize --raw-item raw-web-123
-uv run signal-graph research --event-candidate evt-123
+uv run signal-graph normalize \
+  --raw-item raw-web-123 \
+  --event-type export_control \
+  --direction negative \
+  --primary-entity NVDA
+uv run signal-graph research --event-candidate evt-123 --bundle-file bundle.json
 uv run signal-graph ingest --event-candidate evt-123
 uv run signal-graph rank --event ge-123
 uv run signal-graph explain --event ge-123 --candidate SMH
 ```
+
+## Research Bundle Shape
+
+`research` reads a JSON file matching the current bundle schema:
+
+```json
+{
+  "supporting_documents": ["https://example.com/tsmc-capex"],
+  "contradictions": ["Demand recovery may offset the capex cut."],
+  "entity_resolution_results": {"TSMC": "company:TSMC"},
+  "evidence_spans": ["TSMC said it would reduce capital spending."],
+  "research_confidence": 0.7,
+  "research_notes": "Capex cuts often pressure semiconductor equipment demand."
+}
+```
+
+Use `--allow-empty` only when you deliberately want an empty provenance shell. Normal operation should provide a bundle file.
 
 ## Provenance Rules
 
@@ -54,12 +79,12 @@ uv run signal-graph explain --event ge-123 --candidate SMH
 
 ## Expected Outputs
 
-- `submit` and `fetch` return raw-source-item shaped JSON data
-- `normalize` returns an event candidate
-- `research` returns a research bundle
-- `ingest` returns a graph event record
-- `rank` returns ranked candidates with scores and timing windows
-- `explain` prints memo text and writes a markdown artifact under `.signal-graph/artifacts/`
+- `submit` and `fetch` return persisted raw-source-item JSON with stable `raw_item_id` values
+- `normalize` returns an event candidate and supports `--event-type`, `--direction`, `--primary-entity`, and `--secondary-entity`
+- `research` returns a persisted research bundle keyed as `rb-<event_candidate_id>`
+- `ingest` writes the event, research bundle, source items, and resolved entities into Neo4j and returns a graph event record
+- `rank` returns JSON ranked candidates with scores, timing windows, matched entity, relationship path, and reason summary
+- `explain` prints memo text, uses stored evidence and graph paths, and writes a markdown artifact under `.signal-graph/artifacts/`
 
 ## What Coding Agents Should Assume
 
@@ -67,4 +92,5 @@ uv run signal-graph explain --event ge-123 --candidate SMH
 - Local state lives under `.signal-graph/`
 - SQLite is the source of truth for pipeline progress and provenance artifacts in this MVP
 - Neo4j is the reasoning layer, not the system of record for every object
+- The seeded reference graph is intentionally small: `TSMC`, `NVDA`, `AMD`, `ASML`, `INTC`, `SMH`, and `SOXX`
 - When in doubt, favor deterministic local behavior over implicit network activity
