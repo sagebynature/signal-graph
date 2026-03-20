@@ -129,6 +129,50 @@ def test_doctor_fails_when_neo4j_auth_is_malformed(monkeypatch, tmp_path):
     assert "username/password" in result.stdout.lower()
 
 
+def test_doctor_fails_when_split_neo4j_env_credentials_are_empty(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("NEO4J_USERNAME", "")
+    monkeypatch.setenv("NEO4J_PASSWORD", "")
+    monkeypatch.setattr(shutil, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(
+        "signal_graph.cli.doctor.subprocess.run",
+        lambda *args, **kwargs: SimpleNamespace(returncode=0),
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(app, ["doctor"])
+
+    assert result.exit_code == 1
+    assert "neo4j auth: error" in result.stdout.lower()
+    assert "username and password must be non-empty" in result.stdout.lower()
+
+
+def test_doctor_fails_when_config_neo4j_credentials_are_empty(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    config_dir = tmp_path / ".signal-graph"
+    config_dir.mkdir()
+    (config_dir / "config.toml").write_text(
+        """
+        [neo4j]
+        username = ""
+        password = ""
+        """
+    )
+    monkeypatch.setattr(shutil, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(
+        "signal_graph.cli.doctor.subprocess.run",
+        lambda *args, **kwargs: SimpleNamespace(returncode=0),
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(app, ["doctor"])
+
+    assert result.exit_code == 1
+    assert "config: ok" in result.stdout.lower()
+    assert "neo4j auth: error" in result.stdout.lower()
+    assert "username and password must be non-empty" in result.stdout.lower()
+
+
 def test_doctor_reports_malformed_neo4j_auth_even_when_config_is_invalid(
     monkeypatch, tmp_path
 ):

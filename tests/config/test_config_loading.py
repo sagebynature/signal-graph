@@ -43,3 +43,32 @@ def test_get_neo4j_config_rejects_malformed_auth(auth_value, tmp_path, monkeypat
 
     with pytest.raises(ValueError, match="NEO4J_AUTH.*username/password"):
         get_neo4j_config()
+
+
+def test_get_neo4j_config_rejects_empty_split_env_credentials(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("NEO4J_USERNAME", "")
+    monkeypatch.setenv("NEO4J_PASSWORD", "")
+
+    with pytest.raises(
+        ValueError, match="Neo4j username and password must be non-empty"
+    ):
+        get_neo4j_config()
+
+
+def test_get_neo4j_config_rejects_empty_config_credentials(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    config_dir = tmp_path / ".signal-graph"
+    config_dir.mkdir()
+    (config_dir / "config.toml").write_text(
+        """
+        [neo4j]
+        username = ""
+        password = ""
+        """
+    )
+
+    with pytest.raises(
+        ValueError, match="Neo4j username and password must be non-empty"
+    ):
+        get_neo4j_config()

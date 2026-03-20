@@ -1,15 +1,14 @@
 from __future__ import annotations
 
-import os
 import shutil
 import subprocess
 
 import typer
 from signal_graph.config import (
+    get_explicit_neo4j_auth,
     get_default_config_path,
     get_neo4j_config,
     load_config,
-    parse_neo4j_auth,
 )
 
 
@@ -49,7 +48,7 @@ def doctor() -> None:
         config_valid = False
 
     try:
-        explicit_auth_valid = parse_neo4j_auth(os.getenv("NEO4J_AUTH")) is not None
+        explicit_auth_valid = get_explicit_neo4j_auth() is not None
     except ValueError as exc:
         _print_check("neo4j auth", "error", str(exc))
         checks_ok = False
