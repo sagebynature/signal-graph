@@ -9,6 +9,8 @@ from signal_graph.models.research import ResearchBundle
 from signal_graph.services.scoring_policy import get_scoring_policy
 from signal_graph.storage.sqlite import SqliteStore
 
+_VALID_ASSET_KINDS = {"equity", "etf"}
+
 
 def _candidate_rows_query() -> str:
     return (
@@ -17,29 +19,60 @@ def _candidate_rows_query() -> str:
         "WITH e, company "
         "CALL (company) { "
         "    WITH company "
-        "    RETURN company.ticker AS ticker, company.ticker AS matched_entity, ['DIRECT_ENTITY'] AS relationship_path, 0 AS path_length "
+        "    MATCH (instrument:Instrument)-[:REPRESENTS]->(company) "
+        "    RETURN coalesce(instrument.instrument_id, toLower(coalesce(instrument.kind, 'equity')) + ':' + instrument.ticker) AS instrument_id, "
+        "           instrument.ticker AS ticker, "
+        "           toLower(coalesce(instrument.kind, 'equity')) AS asset_kind, "
+        "           company.ticker AS matched_entity, "
+        "           ['DIRECT_ENTITY'] AS relationship_path, "
+        "           0 AS path_length "
         "    UNION "
         "    WITH company "
         "    MATCH (instrument:Instrument)-[:HOLDS]->(company) "
-        "    RETURN instrument.ticker AS ticker, company.ticker AS matched_entity, ['HOLDS'] AS relationship_path, 1 AS path_length "
+        "    RETURN coalesce(instrument.instrument_id, toLower(coalesce(instrument.kind, 'etf')) + ':' + instrument.ticker) AS instrument_id, "
+        "           instrument.ticker AS ticker, "
+        "           toLower(coalesce(instrument.kind, 'etf')) AS asset_kind, "
+        "           company.ticker AS matched_entity, "
+        "           ['HOLDS'] AS relationship_path, "
+        "           1 AS path_length "
         "    UNION "
         "    WITH company "
-        "    MATCH (company)-[:SUPPLIES]->(downstream:Company) "
-        "    RETURN downstream.ticker AS ticker, company.ticker AS matched_entity, ['SUPPLIES_TO_CUSTOMER'] AS relationship_path, 1 AS path_length "
+        "    MATCH (company)-[:SUPPLIES]->(downstream:Company)<-[:REPRESENTS]-(instrument:Instrument) "
+        "    RETURN coalesce(instrument.instrument_id, toLower(coalesce(instrument.kind, 'equity')) + ':' + instrument.ticker) AS instrument_id, "
+        "           instrument.ticker AS ticker, "
+        "           toLower(coalesce(instrument.kind, 'equity')) AS asset_kind, "
+        "           company.ticker AS matched_entity, "
+        "           ['SUPPLIES_TO_CUSTOMER'] AS relationship_path, "
+        "           1 AS path_length "
         "    UNION "
         "    WITH company "
         "    MATCH (company)-[:SUPPLIES]->(downstream:Company)<-[:HOLDS]-(instrument:Instrument) "
-        "    RETURN instrument.ticker AS ticker, company.ticker AS matched_entity, ['SUPPLIES_TO_CUSTOMER', 'HOLDS'] AS relationship_path, 2 AS path_length "
+        "    RETURN coalesce(instrument.instrument_id, toLower(coalesce(instrument.kind, 'etf')) + ':' + instrument.ticker) AS instrument_id, "
+        "           instrument.ticker AS ticker, "
+        "           toLower(coalesce(instrument.kind, 'etf')) AS asset_kind, "
+        "           company.ticker AS matched_entity, "
+        "           ['SUPPLIES_TO_CUSTOMER', 'HOLDS'] AS relationship_path, "
+        "           2 AS path_length "
         "    UNION "
         "    WITH company "
-        "    MATCH (upstream:Company)-[:SUPPLIES]->(company) "
-        "    RETURN upstream.ticker AS ticker, company.ticker AS matched_entity, ['SUPPLIES_TO_AFFECTED'] AS relationship_path, 1 AS path_length "
+        "    MATCH (upstream:Company)-[:SUPPLIES]->(company)<-[:REPRESENTS]-(instrument:Instrument) "
+        "    RETURN coalesce(instrument.instrument_id, toLower(coalesce(instrument.kind, 'equity')) + ':' + instrument.ticker) AS instrument_id, "
+        "           instrument.ticker AS ticker, "
+        "           toLower(coalesce(instrument.kind, 'equity')) AS asset_kind, "
+        "           company.ticker AS matched_entity, "
+        "           ['SUPPLIES_TO_AFFECTED'] AS relationship_path, "
+        "           1 AS path_length "
         "    UNION "
         "    WITH company "
         "    MATCH (upstream:Company)-[:SUPPLIES]->(company)<-[:HOLDS]-(instrument:Instrument) "
-        "    RETURN instrument.ticker AS ticker, company.ticker AS matched_entity, ['SUPPLIES_TO_AFFECTED', 'HOLDS'] AS relationship_path, 2 AS path_length "
+        "    RETURN coalesce(instrument.instrument_id, toLower(coalesce(instrument.kind, 'etf')) + ':' + instrument.ticker) AS instrument_id, "
+        "           instrument.ticker AS ticker, "
+        "           toLower(coalesce(instrument.kind, 'etf')) AS asset_kind, "
+        "           company.ticker AS matched_entity, "
+        "           ['SUPPLIES_TO_AFFECTED', 'HOLDS'] AS relationship_path, "
+        "           2 AS path_length "
         "} "
-        "RETURN ticker, matched_entity, relationship_path, path_length, "
+        "RETURN instrument_id, ticker, asset_kind, matched_entity, relationship_path, path_length, "
         "       e.event_type AS event_type, "
         "       e.direction AS direction"
     )
@@ -68,6 +101,13 @@ def _resolve_research_bundle(
 
 def _resolve_scoring_policy(bundle: ResearchBundle):
     return bundle.scoring_policy_snapshot or get_scoring_policy()
+
+
+def _is_rankable_trade_candidate(row: dict[str, Any]) -> bool:
+    instrument_id = str(row.get("instrument_id", "")).strip()
+    ticker = str(row.get("ticker", "")).strip()
+    asset_kind = str(row.get("asset_kind", "")).lower()
+    return bool(instrument_id and ticker and asset_kind in _VALID_ASSET_KINDS)
 
 
 def _score_candidate(
@@ -102,7 +142,9 @@ def _score_candidate(
     )
 
     return RankedCandidate(
+        instrument_id=str(row["instrument_id"]),
         ticker=str(row["ticker"]),
+        asset_kind=str(row["asset_kind"]).lower(),
         fast_reaction_score=fast_reaction_score,
         follow_through_score=follow_through_score,
         timing_window=resolved_policy.timing_window,
@@ -133,18 +175,20 @@ def rank_event(graph_event_id: str) -> list[RankedCandidate]:
         if callable(close):
             close()
 
-    ranked_by_ticker: dict[str, RankedCandidate] = {}
+    ranked_by_instrument_id: dict[str, RankedCandidate] = {}
     for row in rows:
+        if not _is_rankable_trade_candidate(row):
+            continue
         candidate = _score_candidate(row, research_bundle=research_bundle)
-        existing = ranked_by_ticker.get(candidate.ticker)
+        existing = ranked_by_instrument_id.get(candidate.instrument_id)
         if (
             existing is None
             or candidate.fast_reaction_score > existing.fast_reaction_score
         ):
-            ranked_by_ticker[candidate.ticker] = candidate
+            ranked_by_instrument_id[candidate.instrument_id] = candidate
 
     return sorted(
-        ranked_by_ticker.values(),
+        ranked_by_instrument_id.values(),
         key=lambda candidate: (
             candidate.fast_reaction_score,
             candidate.follow_through_score,

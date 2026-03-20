@@ -18,8 +18,33 @@ DEMO_REFERENCE_GRAPH_QUERIES = [
     "MERGE (c:Company {ticker: 'AMD'}) SET c.name = 'Advanced Micro Devices'",
     "MERGE (c:Company {ticker: 'ASML'}) SET c.name = 'ASML'",
     "MERGE (c:Company {ticker: 'INTC'}) SET c.name = 'Intel'",
-    "MERGE (:Instrument {ticker: 'SMH', kind: 'ETF'})",
-    "MERGE (:Instrument {ticker: 'SOXX', kind: 'ETF'})",
+    "MERGE (i:Instrument {ticker: 'TSMC'}) SET i.kind = 'equity', i.instrument_id = 'equity:TSMC'",
+    "MERGE (i:Instrument {ticker: 'NVDA'}) SET i.kind = 'equity', i.instrument_id = 'equity:NVDA'",
+    "MERGE (i:Instrument {ticker: 'AMD'}) SET i.kind = 'equity', i.instrument_id = 'equity:AMD'",
+    "MERGE (i:Instrument {ticker: 'ASML'}) SET i.kind = 'equity', i.instrument_id = 'equity:ASML'",
+    "MERGE (i:Instrument {ticker: 'INTC'}) SET i.kind = 'equity', i.instrument_id = 'equity:INTC'",
+    "MERGE (i:Instrument {ticker: 'SMH'}) SET i.kind = 'etf', i.instrument_id = 'etf:SMH'",
+    "MERGE (i:Instrument {ticker: 'SOXX'}) SET i.kind = 'etf', i.instrument_id = 'etf:SOXX'",
+    (
+        "MATCH (i:Instrument {ticker: 'TSMC'}), (c:Company {ticker: 'TSMC'}) "
+        "MERGE (i)-[:REPRESENTS]->(c)"
+    ),
+    (
+        "MATCH (i:Instrument {ticker: 'NVDA'}), (c:Company {ticker: 'NVDA'}) "
+        "MERGE (i)-[:REPRESENTS]->(c)"
+    ),
+    (
+        "MATCH (i:Instrument {ticker: 'AMD'}), (c:Company {ticker: 'AMD'}) "
+        "MERGE (i)-[:REPRESENTS]->(c)"
+    ),
+    (
+        "MATCH (i:Instrument {ticker: 'ASML'}), (c:Company {ticker: 'ASML'}) "
+        "MERGE (i)-[:REPRESENTS]->(c)"
+    ),
+    (
+        "MATCH (i:Instrument {ticker: 'INTC'}), (c:Company {ticker: 'INTC'}) "
+        "MERGE (i)-[:REPRESENTS]->(c)"
+    ),
     (
         "MATCH (smh:Instrument {ticker: 'SMH'}), (nvda:Company {ticker: 'NVDA'}) "
         "MERGE (smh)-[:HOLDS]->(nvda)"

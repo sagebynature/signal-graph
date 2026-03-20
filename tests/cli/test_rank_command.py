@@ -12,28 +12,70 @@ from signal_graph.services.research import build_and_persist_research_bundle
 from signal_graph.storage.sqlite import SqliteStore
 
 
+def _candidate_row(
+    ticker: str,
+    matched_entity: str,
+    relationship_path: list[str],
+    path_length: int,
+    *,
+    asset_kind: str,
+    event_type: str,
+    direction: str,
+) -> dict:
+    return {
+        "instrument_id": f"{asset_kind}:{ticker}",
+        "ticker": ticker,
+        "asset_kind": asset_kind,
+        "matched_entity": matched_entity,
+        "relationship_path": relationship_path,
+        "path_length": path_length,
+        "event_type": event_type,
+        "direction": direction,
+    }
+
+
 def _install_fake_graph_client(monkeypatch) -> None:
     rows = [
+        _candidate_row(
+            "NVDA",
+            "NVDA",
+            ["DIRECT_ENTITY"],
+            0,
+            asset_kind="equity",
+            event_type="supplier_disruption",
+            direction="negative",
+        ),
+        _candidate_row(
+            "SMH",
+            "NVDA",
+            ["HOLDS"],
+            1,
+            asset_kind="etf",
+            event_type="supplier_disruption",
+            direction="negative",
+        ),
+    ]
+
+    class FakeGraphClient:
+        def run(self, query: str, params: dict | None = None) -> list[dict]:
+            return rows
+
+        def close(self) -> None:
+            return None
+
+    monkeypatch.setattr("signal_graph.services.rank.GraphClient", FakeGraphClient)
+
+
+def _install_unresolved_company_graph_client(monkeypatch) -> None:
+    rows = [
         {
-            "ticker": "NVDA",
-            "matched_entity": "NVDA",
+            "ticker": "ACME",
+            "matched_entity": "ACME",
             "relationship_path": ["DIRECT_ENTITY"],
             "path_length": 0,
-            "research_confidence": 0.6,
-            "support_count": 1,
-            "evidence_count": 1,
-            "contradiction_count": 1,
-        },
-        {
-            "ticker": "SMH",
-            "matched_entity": "NVDA",
-            "relationship_path": ["HOLDS"],
-            "path_length": 1,
-            "research_confidence": 0.6,
-            "support_count": 1,
-            "evidence_count": 1,
-            "contradiction_count": 1,
-        },
+            "event_type": "supplier_disruption",
+            "direction": "negative",
+        }
     ]
 
     class FakeGraphClient:
@@ -48,54 +90,42 @@ def _install_fake_graph_client(monkeypatch) -> None:
 
 def _install_ordering_graph_client(monkeypatch) -> None:
     rows = [
-        {
-            "ticker": "TSMC",
-            "matched_entity": "TSMC",
-            "relationship_path": ["DIRECT_ENTITY"],
-            "path_length": 0,
-            "research_confidence": 0.8,
-            "support_count": 2,
-            "evidence_count": 2,
-            "contradiction_count": 0,
-            "event_type": "supplier_disruption",
-            "direction": "negative",
-        },
-        {
-            "ticker": "NVDA",
-            "matched_entity": "TSMC",
-            "relationship_path": ["SUPPLIES_TO_CUSTOMER"],
-            "path_length": 1,
-            "research_confidence": 0.8,
-            "support_count": 2,
-            "evidence_count": 2,
-            "contradiction_count": 0,
-            "event_type": "supplier_disruption",
-            "direction": "negative",
-        },
-        {
-            "ticker": "SMH",
-            "matched_entity": "TSMC",
-            "relationship_path": ["HOLDS"],
-            "path_length": 1,
-            "research_confidence": 0.8,
-            "support_count": 2,
-            "evidence_count": 2,
-            "contradiction_count": 0,
-            "event_type": "supplier_disruption",
-            "direction": "negative",
-        },
-        {
-            "ticker": "SOXX",
-            "matched_entity": "TSMC",
-            "relationship_path": ["SUPPLIES_TO_CUSTOMER", "HOLDS"],
-            "path_length": 2,
-            "research_confidence": 0.8,
-            "support_count": 2,
-            "evidence_count": 2,
-            "contradiction_count": 0,
-            "event_type": "supplier_disruption",
-            "direction": "negative",
-        },
+        _candidate_row(
+            "TSMC",
+            "TSMC",
+            ["DIRECT_ENTITY"],
+            0,
+            asset_kind="equity",
+            event_type="supplier_disruption",
+            direction="negative",
+        ),
+        _candidate_row(
+            "NVDA",
+            "TSMC",
+            ["SUPPLIES_TO_CUSTOMER"],
+            1,
+            asset_kind="equity",
+            event_type="supplier_disruption",
+            direction="negative",
+        ),
+        _candidate_row(
+            "SMH",
+            "TSMC",
+            ["HOLDS"],
+            1,
+            asset_kind="etf",
+            event_type="supplier_disruption",
+            direction="negative",
+        ),
+        _candidate_row(
+            "SOXX",
+            "TSMC",
+            ["SUPPLIES_TO_CUSTOMER", "HOLDS"],
+            2,
+            asset_kind="etf",
+            event_type="supplier_disruption",
+            direction="negative",
+        ),
     ]
 
     class FakeGraphClient:
@@ -110,54 +140,42 @@ def _install_ordering_graph_client(monkeypatch) -> None:
 
 def _install_event_type_graph_client(monkeypatch) -> None:
     rows = [
-        {
-            "ticker": "TSMC",
-            "matched_entity": "TSMC",
-            "relationship_path": ["DIRECT_ENTITY"],
-            "path_length": 0,
-            "research_confidence": 0.8,
-            "support_count": 2,
-            "evidence_count": 2,
-            "contradiction_count": 0,
-            "event_type": "capex_cut",
-            "direction": "negative",
-        },
-        {
-            "ticker": "ASML",
-            "matched_entity": "TSMC",
-            "relationship_path": ["SUPPLIES_TO_AFFECTED"],
-            "path_length": 1,
-            "research_confidence": 0.8,
-            "support_count": 2,
-            "evidence_count": 2,
-            "contradiction_count": 0,
-            "event_type": "capex_cut",
-            "direction": "negative",
-        },
-        {
-            "ticker": "NVDA",
-            "matched_entity": "TSMC",
-            "relationship_path": ["SUPPLIES_TO_CUSTOMER"],
-            "path_length": 1,
-            "research_confidence": 0.8,
-            "support_count": 2,
-            "evidence_count": 2,
-            "contradiction_count": 0,
-            "event_type": "capex_cut",
-            "direction": "negative",
-        },
-        {
-            "ticker": "SMH",
-            "matched_entity": "TSMC",
-            "relationship_path": ["HOLDS"],
-            "path_length": 1,
-            "research_confidence": 0.8,
-            "support_count": 2,
-            "evidence_count": 2,
-            "contradiction_count": 0,
-            "event_type": "capex_cut",
-            "direction": "negative",
-        },
+        _candidate_row(
+            "TSMC",
+            "TSMC",
+            ["DIRECT_ENTITY"],
+            0,
+            asset_kind="equity",
+            event_type="capex_cut",
+            direction="negative",
+        ),
+        _candidate_row(
+            "ASML",
+            "TSMC",
+            ["SUPPLIES_TO_AFFECTED"],
+            1,
+            asset_kind="equity",
+            event_type="capex_cut",
+            direction="negative",
+        ),
+        _candidate_row(
+            "NVDA",
+            "TSMC",
+            ["SUPPLIES_TO_CUSTOMER"],
+            1,
+            asset_kind="equity",
+            event_type="capex_cut",
+            direction="negative",
+        ),
+        _candidate_row(
+            "SMH",
+            "TSMC",
+            ["HOLDS"],
+            1,
+            asset_kind="etf",
+            event_type="capex_cut",
+            direction="negative",
+        ),
     ]
 
     class FakeGraphClient:
@@ -172,42 +190,33 @@ def _install_event_type_graph_client(monkeypatch) -> None:
 
 def _install_configurable_graph_client(monkeypatch) -> None:
     rows = [
-        {
-            "ticker": "NVDA",
-            "matched_entity": "NVDA",
-            "relationship_path": ["DIRECT_ENTITY"],
-            "path_length": 0,
-            "research_confidence": 0.8,
-            "support_count": 2,
-            "evidence_count": 2,
-            "contradiction_count": 0,
-            "event_type": "export_control",
-            "direction": "negative",
-        },
-        {
-            "ticker": "AMD",
-            "matched_entity": "NVDA",
-            "relationship_path": ["SUPPLIES_TO_CUSTOMER"],
-            "path_length": 1,
-            "research_confidence": 0.8,
-            "support_count": 2,
-            "evidence_count": 2,
-            "contradiction_count": 0,
-            "event_type": "export_control",
-            "direction": "negative",
-        },
-        {
-            "ticker": "SMH",
-            "matched_entity": "NVDA",
-            "relationship_path": ["HOLDS"],
-            "path_length": 1,
-            "research_confidence": 0.8,
-            "support_count": 2,
-            "evidence_count": 2,
-            "contradiction_count": 0,
-            "event_type": "export_control",
-            "direction": "negative",
-        },
+        _candidate_row(
+            "NVDA",
+            "NVDA",
+            ["DIRECT_ENTITY"],
+            0,
+            asset_kind="equity",
+            event_type="export_control",
+            direction="negative",
+        ),
+        _candidate_row(
+            "AMD",
+            "NVDA",
+            ["SUPPLIES_TO_CUSTOMER"],
+            1,
+            asset_kind="equity",
+            event_type="export_control",
+            direction="negative",
+        ),
+        _candidate_row(
+            "SMH",
+            "NVDA",
+            ["HOLDS"],
+            1,
+            asset_kind="etf",
+            event_type="export_control",
+            direction="negative",
+        ),
     ]
 
     class FakeGraphClient:
@@ -361,14 +370,105 @@ def test_rank_returns_graph_backed_candidates_with_reasons(tmp_path, monkeypatch
     result = runner.invoke(app, ["rank", "--event", graph_event_id])
 
     assert result.exit_code == 0
-    candidates = json.loads(result.stdout.replace("'", '"'))
+    candidates = json.loads(result.stdout)
     smh = next(candidate for candidate in candidates if candidate["ticker"] == "SMH")
+    assert smh["instrument_id"] == "etf:SMH"
+    assert smh["asset_kind"] == "etf"
     assert smh["matched_entity"] == "NVDA"
     assert smh["timing_window"] == "immediate"
     assert "HOLDS" in smh["relationship_path"]
     assert "NVDA" in smh["reason_summary"]
     assert smh["fast_reaction_score"] > 0.0
     assert smh["follow_through_score"] > 0.0
+
+
+def test_rank_filters_unresolved_non_instrument_candidates(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    _install_unresolved_company_graph_client(monkeypatch)
+
+    runner = CliRunner()
+    runner.invoke(app, ["init"])
+    submit = runner.invoke(app, ["submit", "--text", "ACME supplier disruption"])
+    raw_item_id = json.loads(submit.stdout)["raw_item_id"]
+    normalized = runner.invoke(
+        app,
+        [
+            "normalize",
+            "--raw-item",
+            raw_item_id,
+            "--event-type",
+            "supplier_disruption",
+            "--direction",
+            "negative",
+            "--primary-entity",
+            "ACME",
+        ],
+    )
+    event_candidate_id = json.loads(normalized.stdout)["event_candidate_id"]
+    runner.invoke(
+        app,
+        [
+            "research",
+            "--event-candidate",
+            event_candidate_id,
+            "--bundle-file",
+            _write_bundle_file(tmp_path),
+        ],
+    )
+    ingested = runner.invoke(app, ["ingest", "--event-candidate", event_candidate_id])
+    graph_event_id = json.loads(ingested.stdout)["graph_event_id"]
+
+    result = runner.invoke(app, ["rank", "--event", graph_event_id])
+
+    assert result.exit_code == 0
+    assert json.loads(result.stdout) == []
+
+
+def test_rank_returns_instruments_only_for_trade_candidates(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    _install_ordering_graph_client(monkeypatch)
+
+    runner = CliRunner()
+    runner.invoke(app, ["init"])
+    submit = runner.invoke(app, ["submit", "--text", "TSMC supplier disruption"])
+    raw_item_id = json.loads(submit.stdout)["raw_item_id"]
+    normalized = runner.invoke(
+        app,
+        [
+            "normalize",
+            "--raw-item",
+            raw_item_id,
+            "--event-type",
+            "supplier_disruption",
+            "--direction",
+            "negative",
+            "--primary-entity",
+            "TSMC",
+        ],
+    )
+    event_candidate_id = json.loads(normalized.stdout)["event_candidate_id"]
+    runner.invoke(
+        app,
+        [
+            "research",
+            "--event-candidate",
+            event_candidate_id,
+            "--bundle-file",
+            _write_bundle_file(tmp_path),
+        ],
+    )
+    ingested = runner.invoke(app, ["ingest", "--event-candidate", event_candidate_id])
+    graph_event_id = json.loads(ingested.stdout)["graph_event_id"]
+
+    result = runner.invoke(app, ["rank", "--event", graph_event_id])
+
+    assert result.exit_code == 0
+    candidates = json.loads(result.stdout)
+    assert all(candidate["asset_kind"] in {"equity", "etf"} for candidate in candidates)
+    assert all(
+        candidate["instrument_id"] == f"{candidate['asset_kind']}:{candidate['ticker']}"
+        for candidate in candidates
+    )
 
 
 def test_rank_prefers_supplier_spillover_over_broad_etf_holding(tmp_path, monkeypatch):
@@ -410,7 +510,7 @@ def test_rank_prefers_supplier_spillover_over_broad_etf_holding(tmp_path, monkey
     result = runner.invoke(app, ["rank", "--event", graph_event_id])
 
     assert result.exit_code == 0
-    candidates = json.loads(result.stdout.replace("'", '"'))
+    candidates = json.loads(result.stdout)
     assert [candidate["ticker"] for candidate in candidates] == [
         "TSMC",
         "NVDA",
@@ -418,6 +518,7 @@ def test_rank_prefers_supplier_spillover_over_broad_etf_holding(tmp_path, monkey
         "SOXX",
     ]
     nvda = next(candidate for candidate in candidates if candidate["ticker"] == "NVDA")
+    assert nvda["asset_kind"] == "equity"
     assert nvda["timing_window"] == "immediate"
 
 
@@ -462,7 +563,7 @@ def test_rank_treats_capex_cut_as_more_relevant_for_upstream_suppliers(
     result = runner.invoke(app, ["rank", "--event", graph_event_id])
 
     assert result.exit_code == 0
-    candidates = json.loads(result.stdout.replace("'", '"'))
+    candidates = json.loads(result.stdout)
     assert [candidate["ticker"] for candidate in candidates] == [
         "TSMC",
         "ASML",
@@ -471,6 +572,8 @@ def test_rank_treats_capex_cut_as_more_relevant_for_upstream_suppliers(
     ]
     asml = next(candidate for candidate in candidates if candidate["ticker"] == "ASML")
     nvda = next(candidate for candidate in candidates if candidate["ticker"] == "NVDA")
+    assert asml["asset_kind"] == "equity"
+    assert nvda["asset_kind"] == "equity"
     assert asml["timing_window"] == "immediate"
     assert nvda["timing_window"] == "short_drift"
 
@@ -515,13 +618,14 @@ def test_rank_uses_local_export_control_policy(tmp_path, monkeypatch):
     result = runner.invoke(app, ["rank", "--event", graph_event_id])
 
     assert result.exit_code == 0
-    candidates = json.loads(result.stdout.replace("'", '"'))
+    candidates = json.loads(result.stdout)
     assert [candidate["ticker"] for candidate in candidates] == [
         "NVDA",
         "SMH",
         "AMD",
     ]
     smh = next(candidate for candidate in candidates if candidate["ticker"] == "SMH")
+    assert smh["asset_kind"] == "etf"
     assert (
         smh["reason_summary"] == "SMH is exposed to NVDA via policy-tuned ETF spillover"
     )
@@ -615,8 +719,9 @@ def test_rank_uses_ingested_research_bundle_revision_for_existing_graph_event(
     result = runner.invoke(app, ["rank", "--event", graph_event_id])
 
     assert result.exit_code == 0
-    candidates = json.loads(result.stdout.replace("'", '"'))
+    candidates = json.loads(result.stdout)
     smh = next(candidate for candidate in candidates if candidate["ticker"] == "SMH")
+    assert smh["asset_kind"] == "etf"
     assert (
         smh["reason_summary"] == "SMH is exposed to NVDA via revision-1 ETF spillover"
     )
