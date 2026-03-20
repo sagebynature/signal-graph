@@ -2,6 +2,7 @@
 .pytest_cache/
 __pycache__/
 *.py[cod]
+.signal-graph/
 
 infra/neo4j/data/*
 !infra/neo4j/data/.gitkeep
