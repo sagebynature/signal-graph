@@ -5,9 +5,13 @@ from importlib.metadata import version as package_version
 import typer
 
 from trade_graph.cli.doctor import doctor
+from trade_graph.cli.explain import explain
 from trade_graph.cli.fetch import fetch
+from trade_graph.cli.ingest import ingest
 from trade_graph.cli.init import init
 from trade_graph.cli.normalize import normalize
+from trade_graph.cli.rank import rank
+from trade_graph.cli.research import research
 from trade_graph.cli.submit import submit
 
 
@@ -25,9 +29,13 @@ def version() -> None:
 
 
 app.command()(doctor)
+app.command()(explain)
 app.command()(fetch)
+app.command()(ingest)
 app.command()(init)
 app.command()(normalize)
+app.command()(rank)
+app.command()(research)
 app.command()(submit)
 
 

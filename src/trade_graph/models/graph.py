@@ -18,10 +18,12 @@ class RankedCandidate(BaseModel):
     ticker: str
     fast_reaction_score: float
     follow_through_score: float
+    timing_window: str = "short_drift"
 
 
 class MemoResponse(BaseModel):
     graph_event_id: str
     ticker: str
     memo_text: str
+    artifact_path: str | None = None
     ranked_candidates: list[RankedCandidate] = Field(default_factory=list)
