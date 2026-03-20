@@ -101,7 +101,7 @@ uv run signal-graph version
 If the `signal-graph` command is unavailable, recover the environment before doing pipeline work:
 
 ```bash
-git clone git@github.com:schoi80/signal-graph.git
+git clone git@github.com:sagebynature/signal-graph.git
 cd signal-graph
 uv sync --group dev
 uv run signal-graph doctor
