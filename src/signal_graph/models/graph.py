@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 class GraphEvent(BaseModel):
     graph_event_id: str
     event_candidate_id: str
+    research_bundle_id: str | None = None
     committed_at: datetime | None = None
     trust_score: float = 0.0
     eligible_modes: list[str] = Field(default_factory=list)

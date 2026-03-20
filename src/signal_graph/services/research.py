@@ -9,6 +9,7 @@ from pydantic import ValidationError
 
 from signal_graph.models.events import EventCandidate
 from signal_graph.models.research import ResearchBundle, ResearchBundleInput
+from signal_graph.services.scoring_policy import get_scoring_policy
 from signal_graph.storage.sqlite import SqliteStore
 
 
@@ -45,6 +46,7 @@ def build_research_bundle(
         research_bundle_id=research_bundle_id,
         event_candidate_id=event.event_candidate_id,
         bundle_revision=bundle_revision,
+        scoring_policy_snapshot=get_scoring_policy(),
         supporting_documents=bundle_input.supporting_documents,
         contradictions=bundle_input.contradictions,
         entity_resolution_results=bundle_input.entity_resolution_results,

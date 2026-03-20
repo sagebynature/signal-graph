@@ -8,6 +8,7 @@ from pathlib import Path
 
 from signal_graph.models.events import EventCandidate
 from signal_graph.models.graph import GraphEvent
+from signal_graph.models.policy import ScoringPolicy
 from signal_graph.models.research import ResearchBundle
 from signal_graph.models.source import RawSourceItem
 
@@ -202,6 +203,7 @@ class SqliteStore:
                     research_bundle_id,
                     event_candidate_id,
                     bundle_revision,
+                    scoring_policy_snapshot,
                     supporting_documents,
                     contradictions,
                     entity_resolution_results,
@@ -209,12 +211,15 @@ class SqliteStore:
                     research_confidence,
                     research_notes,
                     created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     bundle.research_bundle_id,
                     bundle.event_candidate_id,
                     bundle.bundle_revision,
+                    json.dumps(bundle.scoring_policy_snapshot.model_dump(mode="json"))
+                    if bundle.scoring_policy_snapshot is not None
+                    else None,
                     json.dumps(bundle.supporting_documents),
                     json.dumps(bundle.contradictions),
                     json.dumps(bundle.entity_resolution_results)
@@ -242,6 +247,7 @@ class SqliteStore:
                     research_bundle_id,
                     event_candidate_id,
                     bundle_revision,
+                    scoring_policy_snapshot,
                     supporting_documents,
                     contradictions,
                     entity_resolution_results,
@@ -264,13 +270,16 @@ class SqliteStore:
             research_bundle_id=row[0],
             event_candidate_id=row[1],
             bundle_revision=row[2] or 1,
-            supporting_documents=json.loads(row[3]),
-            contradictions=json.loads(row[4]),
-            entity_resolution_results=json.loads(row[5]) if row[5] else None,
-            evidence_spans=json.loads(row[6]),
-            research_confidence=row[7],
-            research_notes=row[8],
-            created_at=datetime.fromisoformat(row[9]) if row[9] else None,
+            scoring_policy_snapshot=(
+                ScoringPolicy.model_validate(json.loads(row[3])) if row[3] else None
+            ),
+            supporting_documents=json.loads(row[4]),
+            contradictions=json.loads(row[5]),
+            entity_resolution_results=json.loads(row[6]) if row[6] else None,
+            evidence_spans=json.loads(row[7]),
+            research_confidence=row[8],
+            research_notes=row[9],
+            created_at=datetime.fromisoformat(row[10]) if row[10] else None,
         )
 
     def next_research_bundle_revision(self, event_candidate_id: str) -> int:
@@ -286,22 +295,76 @@ class SqliteStore:
 
         return int(row[0]) if row is not None else 1
 
+    def get_research_bundle_by_id(
+        self, research_bundle_id: str
+    ) -> ResearchBundle | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT
+                    research_bundle_id,
+                    event_candidate_id,
+                    bundle_revision,
+                    scoring_policy_snapshot,
+                    supporting_documents,
+                    contradictions,
+                    entity_resolution_results,
+                    evidence_spans,
+                    research_confidence,
+                    research_notes,
+                    created_at
+                FROM research_bundles
+                WHERE research_bundle_id = ?
+                """,
+                (research_bundle_id,),
+            ).fetchone()
+
+        if row is None:
+            return None
+
+        return ResearchBundle(
+            research_bundle_id=row[0],
+            event_candidate_id=row[1],
+            bundle_revision=row[2] or 1,
+            scoring_policy_snapshot=(
+                ScoringPolicy.model_validate(json.loads(row[3])) if row[3] else None
+            ),
+            supporting_documents=json.loads(row[4]),
+            contradictions=json.loads(row[5]),
+            entity_resolution_results=json.loads(row[6]) if row[6] else None,
+            evidence_spans=json.loads(row[7]),
+            research_confidence=row[8],
+            research_notes=row[9],
+            created_at=datetime.fromisoformat(row[10]) if row[10] else None,
+        )
+
     def save_graph_event(self, graph_event: GraphEvent) -> None:
+        research_bundle_id = graph_event.research_bundle_id
+        if research_bundle_id is None:
+            bundle = self.get_latest_research_bundle(graph_event.event_candidate_id)
+            if bundle is None:
+                raise ValueError(
+                    f"research bundle not found: {graph_event.event_candidate_id}"
+                )
+            research_bundle_id = bundle.research_bundle_id
+
         with self._connect() as connection:
             connection.execute(
                 """
                 INSERT OR REPLACE INTO graph_events (
                     graph_event_id,
                     event_candidate_id,
+                    research_bundle_id,
                     committed_at,
                     trust_score,
                     eligible_modes,
                     ingest_decision
-                ) VALUES (?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     graph_event.graph_event_id,
                     graph_event.event_candidate_id,
+                    research_bundle_id,
                     graph_event.committed_at.isoformat()
                     if graph_event.committed_at is not None
                     else "",
@@ -318,6 +381,7 @@ class SqliteStore:
                 SELECT
                     graph_event_id,
                     event_candidate_id,
+                    research_bundle_id,
                     committed_at,
                     trust_score,
                     eligible_modes,
@@ -334,17 +398,22 @@ class SqliteStore:
         return GraphEvent(
             graph_event_id=row[0],
             event_candidate_id=row[1],
-            committed_at=datetime.fromisoformat(row[2]) if row[2] else None,
-            trust_score=row[3],
-            eligible_modes=json.loads(row[4]),
-            ingest_decision=row[5],
+            research_bundle_id=row[2],
+            committed_at=datetime.fromisoformat(row[3]) if row[3] else None,
+            trust_score=row[4],
+            eligible_modes=json.loads(row[5]),
+            ingest_decision=row[6],
         )
 
     def _apply_additive_migrations(self, connection: sqlite3.Connection) -> None:
         self._ensure_column(connection, "event_candidates", "dedupe_fingerprint TEXT")
         self._ensure_column(connection, "event_candidates", "created_at TEXT")
         self._ensure_column(connection, "research_bundles", "bundle_revision INTEGER")
+        self._ensure_column(
+            connection, "research_bundles", "scoring_policy_snapshot TEXT"
+        )
         self._ensure_column(connection, "research_bundles", "created_at TEXT")
+        self._ensure_column(connection, "graph_events", "research_bundle_id TEXT")
         connection.execute(
             """
             CREATE TABLE IF NOT EXISTS event_candidate_source_items (
@@ -380,6 +449,7 @@ class SqliteStore:
         self._backfill_event_candidate_provenance(connection)
         self._backfill_event_candidate_source_item_lookup(connection)
         self._backfill_research_bundle_provenance(connection)
+        self._backfill_graph_event_research_bundle_lookup(connection)
 
     def _ensure_column(
         self, connection: sqlite3.Connection, table_name: str, column_definition: str
@@ -458,6 +528,23 @@ class SqliteStore:
                   AND prior_revisions.rowid <= research_bundles.rowid
             )
             WHERE bundle_revision IS NULL
+            """
+        )
+
+    def _backfill_graph_event_research_bundle_lookup(
+        self, connection: sqlite3.Connection
+    ) -> None:
+        connection.execute(
+            """
+            UPDATE graph_events
+            SET research_bundle_id = (
+                SELECT research_bundle_id
+                FROM research_bundles
+                WHERE research_bundles.event_candidate_id = graph_events.event_candidate_id
+                ORDER BY bundle_revision DESC, created_at DESC, rowid DESC
+                LIMIT 1
+            )
+            WHERE research_bundle_id IS NULL
             """
         )
 

@@ -6,6 +6,8 @@ from neo4j.exceptions import ServiceUnavailable
 from typer.testing import CliRunner
 
 from signal_graph.cli.main import app
+from signal_graph.config import DEFAULT_PROJECT_DIR
+from signal_graph.storage.sqlite import SqliteStore
 
 
 def _install_fake_graph_client(monkeypatch) -> None:
@@ -216,32 +218,51 @@ def _install_configurable_graph_client(monkeypatch) -> None:
     monkeypatch.setattr("signal_graph.services.rank.GraphClient", FakeGraphClient)
 
 
-def _write_bundle_file(path) -> str:
+def _write_bundle_file(
+    path,
+    *,
+    supporting_documents: list[str] | None = None,
+    contradictions: list[str] | None = None,
+    evidence_spans: list[str] | None = None,
+    research_confidence: float = 0.6,
+    research_notes: str = "Near-term supply tightness could affect shipments.",
+) -> str:
     bundle_path = path / "bundle.json"
     bundle_path.write_text(
         json.dumps(
             {
-                "supporting_documents": ["https://example.com/nvda-supplier"],
-                "contradictions": ["Inventory could cushion the disruption."],
+                "supporting_documents": supporting_documents
+                or ["https://example.com/nvda-supplier"],
+                "contradictions": contradictions
+                or ["Inventory could cushion the disruption."],
                 "entity_resolution_results": {"NVDA": "company:NVDA"},
-                "evidence_spans": ["A key supplier reported production delays."],
-                "research_confidence": 0.6,
-                "research_notes": "Near-term supply tightness could affect shipments.",
+                "evidence_spans": evidence_spans
+                or ["A key supplier reported production delays."],
+                "research_confidence": research_confidence,
+                "research_notes": research_notes,
             }
         )
     )
     return str(bundle_path)
 
 
-def _write_scoring_policy_config(path) -> str:
+def _write_scoring_policy_config(
+    path,
+    *,
+    description: str = "policy-tuned ETF spillover",
+    rationale: str = (
+        "For a negative `export_control`, sector ETF exposure can move immediately."
+    ),
+    base_score: float = 0.64,
+) -> str:
     config_path = path / ".signal-graph" / "config.toml"
     config_path.write_text(
-        """
+        f"""
         [scoring_policy]
 
         [[scoring_policy.paths]]
         relationship_path = ["HOLDS"]
-        description = "policy-tuned ETF spillover"
+        description = "{description}"
         base_score = 0.5
         timing_window = "immediate"
 
@@ -252,9 +273,9 @@ def _write_scoring_policy_config(path) -> str:
 
         [[scoring_policy.events.overrides]]
         relationship_path = ["HOLDS"]
-        base_score = 0.64
+        base_score = {base_score}
         timing_window = "immediate"
-        rationale = "For a negative `export_control`, sector ETF exposure can move immediately."
+        rationale = "{rationale}"
         """
     )
     return str(config_path)
@@ -501,4 +522,101 @@ def test_rank_uses_local_export_control_policy(tmp_path, monkeypatch):
     smh = next(candidate for candidate in candidates if candidate["ticker"] == "SMH")
     assert (
         smh["reason_summary"] == "SMH is exposed to NVDA via policy-tuned ETF spillover"
+    )
+
+
+def test_rank_uses_ingested_research_bundle_revision_for_existing_graph_event(
+    tmp_path, monkeypatch
+):
+    monkeypatch.chdir(tmp_path)
+    _install_configurable_graph_client(monkeypatch)
+
+    runner = CliRunner()
+    runner.invoke(app, ["init"])
+    _write_scoring_policy_config(
+        tmp_path,
+        description="revision-1 ETF spillover",
+        rationale="Revision 1 rationale stays bound to the ingested graph event.",
+    )
+    submit = runner.invoke(app, ["submit", "--text", "US export controls tighten"])
+    raw_item_id = json.loads(submit.stdout)["raw_item_id"]
+    normalized = runner.invoke(
+        app,
+        [
+            "normalize",
+            "--raw-item",
+            raw_item_id,
+            "--event-type",
+            "export_control",
+            "--direction",
+            "negative",
+            "--primary-entity",
+            "NVDA",
+        ],
+    )
+    event_candidate_id = json.loads(normalized.stdout)["event_candidate_id"]
+    runner.invoke(
+        app,
+        [
+            "research",
+            "--event-candidate",
+            event_candidate_id,
+            "--bundle-file",
+            _write_bundle_file(
+                tmp_path,
+                supporting_documents=["https://example.com/export-control-r1"],
+                contradictions=[],
+                research_confidence=0.8,
+                research_notes="Revision 1 research snapshot.",
+            ),
+        ],
+    )
+
+    store = SqliteStore(DEFAULT_PROJECT_DIR / "signal_graph.db")
+    first_bundle = store.get_latest_research_bundle(event_candidate_id)
+    assert first_bundle is not None
+    assert first_bundle.bundle_revision == 1
+
+    ingested = runner.invoke(app, ["ingest", "--event-candidate", event_candidate_id])
+    graph_event_id = json.loads(ingested.stdout)["graph_event_id"]
+
+    graph_event = store.get_graph_event(graph_event_id)
+    assert graph_event is not None
+    assert graph_event.research_bundle_id == first_bundle.research_bundle_id
+
+    _write_scoring_policy_config(
+        tmp_path,
+        description="revision-2 ETF spillover",
+        rationale="Revision 2 rationale should not leak into the existing graph event.",
+        base_score=0.12,
+    )
+    runner.invoke(
+        app,
+        [
+            "research",
+            "--event-candidate",
+            event_candidate_id,
+            "--bundle-file",
+            _write_bundle_file(
+                tmp_path,
+                supporting_documents=["https://example.com/export-control-r2"],
+                contradictions=["A new caveat was added after ingest."],
+                research_confidence=0.2,
+                research_notes="Revision 2 research snapshot.",
+            ),
+        ],
+    )
+
+    latest_bundle = store.get_latest_research_bundle(event_candidate_id)
+    assert latest_bundle is not None
+    assert latest_bundle.research_bundle_id != first_bundle.research_bundle_id
+    assert latest_bundle.bundle_revision == 2
+
+    result = runner.invoke(app, ["rank", "--event", graph_event_id])
+
+    assert result.exit_code == 0
+    candidates = json.loads(result.stdout.replace("'", '"'))
+    smh = next(candidate for candidate in candidates if candidate["ticker"] == "SMH")
+    assert (
+        smh["reason_summary"] == "SMH is exposed to NVDA via revision-1 ETF spillover"
     )

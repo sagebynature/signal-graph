@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS research_bundles (
     research_bundle_id TEXT PRIMARY KEY,
     event_candidate_id TEXT NOT NULL REFERENCES event_candidates(event_candidate_id) ON DELETE CASCADE,
     bundle_revision INTEGER,
+    scoring_policy_snapshot TEXT,
     supporting_documents TEXT NOT NULL,
     contradictions TEXT NOT NULL,
     entity_resolution_results TEXT,
@@ -46,6 +47,7 @@ CREATE TABLE IF NOT EXISTS research_bundles (
 CREATE TABLE IF NOT EXISTS graph_events (
     graph_event_id TEXT PRIMARY KEY,
     event_candidate_id TEXT NOT NULL REFERENCES event_candidates(event_candidate_id) ON DELETE CASCADE,
+    research_bundle_id TEXT REFERENCES research_bundles(research_bundle_id),
     committed_at TEXT NOT NULL,
     trust_score REAL NOT NULL,
     eligible_modes TEXT NOT NULL,
