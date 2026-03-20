@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 import json
 from pathlib import Path
+import sqlite3
 
 from pydantic import ValidationError
 
@@ -69,10 +70,18 @@ def build_and_persist_research_bundle(
     if materialized_bundle.is_empty() and not allow_empty:
         raise ValueError("empty research bundle requires --allow-empty")
 
-    bundle = build_research_bundle(
-        event_candidate,
-        materialized_bundle,
-        bundle_revision=store.next_research_bundle_revision(event_candidate_id),
+    for _ in range(5):
+        bundle = build_research_bundle(
+            event_candidate,
+            materialized_bundle,
+            bundle_revision=store.next_research_bundle_revision(event_candidate_id),
+        )
+        try:
+            store.save_research_bundle(bundle)
+            return bundle
+        except sqlite3.IntegrityError:
+            continue
+
+    raise ValueError(
+        f"unable to allocate research bundle revision due to concurrent writes: {event_candidate_id}"
     )
-    store.save_research_bundle(bundle)
-    return bundle

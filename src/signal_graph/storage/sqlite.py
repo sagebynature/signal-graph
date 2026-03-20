@@ -229,6 +229,29 @@ class SqliteStore:
 
         return self._hydrate_event_candidate(row)
 
+    def event_candidate_has_downstream_artifacts(self, event_candidate_id: str) -> bool:
+        with self._connect() as connection:
+            research_bundle_row = connection.execute(
+                """
+                SELECT 1
+                FROM research_bundles
+                WHERE event_candidate_id = ?
+                LIMIT 1
+                """,
+                (event_candidate_id,),
+            ).fetchone()
+            graph_event_row = connection.execute(
+                """
+                SELECT 1
+                FROM graph_events
+                WHERE event_candidate_id = ?
+                LIMIT 1
+                """,
+                (event_candidate_id,),
+            ).fetchone()
+
+        return research_bundle_row is not None or graph_event_row is not None
+
     def save_research_bundle(self, bundle: ResearchBundle) -> None:
         with self._connect() as connection:
             connection.execute(
@@ -404,6 +427,12 @@ class SqliteStore:
             """
             CREATE INDEX IF NOT EXISTS idx_research_bundles_event_candidate_revision
                 ON research_bundles(event_candidate_id, bundle_revision DESC, created_at DESC)
+            """
+        )
+        connection.execute(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_research_bundles_event_candidate_revision_unique
+                ON research_bundles(event_candidate_id, bundle_revision)
             """
         )
         self._backfill_event_candidate_provenance(connection)

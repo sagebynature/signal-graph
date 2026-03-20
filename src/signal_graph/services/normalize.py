@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from hashlib import sha256
+import sqlite3
 from uuid import uuid4
 
 from signal_graph.models.events import EventCandidate
@@ -63,6 +64,52 @@ def merge_event_candidates(
     )
 
 
+def _reconcile_existing_event_candidate(
+    store: SqliteStore,
+    existing_event_candidate: EventCandidate,
+    incoming_event_candidate: EventCandidate,
+    *,
+    raw_item_id: str,
+) -> EventCandidate:
+    if len(existing_event_candidate.source_item_ids) > 1:
+        if store.event_candidate_has_downstream_artifacts(
+            existing_event_candidate.event_candidate_id
+        ):
+            raise ValueError(
+                "processed legacy candidates cannot be auto-split because research bundles or graph events already exist"
+            )
+
+        peeled_source_item_ids = [
+            source_item_id
+            for source_item_id in existing_event_candidate.source_item_ids
+            if source_item_id != raw_item_id
+        ]
+        store.update_event_candidate(
+            EventCandidate(
+                event_candidate_id=existing_event_candidate.event_candidate_id,
+                title=existing_event_candidate.title,
+                event_type=existing_event_candidate.event_type,
+                direction=existing_event_candidate.direction,
+                primary_entities=existing_event_candidate.primary_entities,
+                dedupe_fingerprint=existing_event_candidate.dedupe_fingerprint,
+                secondary_entities=existing_event_candidate.secondary_entities,
+                source_item_ids=peeled_source_item_ids,
+                candidate_confidence=existing_event_candidate.candidate_confidence,
+                candidate_status=existing_event_candidate.candidate_status,
+                created_at=existing_event_candidate.created_at,
+            )
+        )
+        store.insert_event_candidate(incoming_event_candidate)
+        return incoming_event_candidate
+
+    merged_event_candidate = merge_event_candidates(
+        existing_event_candidate,
+        incoming_event_candidate,
+    )
+    store.update_event_candidate(merged_event_candidate)
+    return merged_event_candidate
+
+
 def normalize_and_persist_raw_item(
     store: SqliteStore,
     raw_item_id: str,
@@ -85,36 +132,26 @@ def normalize_and_persist_raw_item(
     )
     existing_event_candidate = store.get_event_candidate_for_raw_item(raw_item_id)
     if existing_event_candidate is not None:
-        if len(existing_event_candidate.source_item_ids) > 1:
-            peeled_source_item_ids = [
-                source_item_id
-                for source_item_id in existing_event_candidate.source_item_ids
-                if source_item_id != raw_item_id
-            ]
-            store.update_event_candidate(
-                EventCandidate(
-                    event_candidate_id=existing_event_candidate.event_candidate_id,
-                    title=existing_event_candidate.title,
-                    event_type=existing_event_candidate.event_type,
-                    direction=existing_event_candidate.direction,
-                    primary_entities=existing_event_candidate.primary_entities,
-                    dedupe_fingerprint=existing_event_candidate.dedupe_fingerprint,
-                    secondary_entities=existing_event_candidate.secondary_entities,
-                    source_item_ids=peeled_source_item_ids,
-                    candidate_confidence=existing_event_candidate.candidate_confidence,
-                    candidate_status=existing_event_candidate.candidate_status,
-                    created_at=existing_event_candidate.created_at,
-                )
-            )
-            store.insert_event_candidate(event_candidate)
-            return event_candidate
-
-        event_candidate = merge_event_candidates(
+        return _reconcile_existing_event_candidate(
+            store,
             existing_event_candidate,
             event_candidate,
+            raw_item_id=raw_item_id,
         )
-        store.update_event_candidate(event_candidate)
-        return event_candidate
 
-    store.insert_event_candidate(event_candidate)
+    try:
+        store.insert_event_candidate(event_candidate)
+    except sqlite3.IntegrityError:
+        existing_event_candidate = store.get_event_candidate_for_raw_item(raw_item_id)
+        if existing_event_candidate is None:
+            raise ValueError(
+                f"unable to normalize raw item due to concurrent write: {raw_item_id}"
+            ) from None
+        return _reconcile_existing_event_candidate(
+            store,
+            existing_event_candidate,
+            event_candidate,
+            raw_item_id=raw_item_id,
+        )
+
     return event_candidate

@@ -7,6 +7,7 @@ from pathlib import Path
 from typer.testing import CliRunner
 
 from signal_graph.cli.main import app
+from signal_graph.storage.sqlite import SqliteStore
 
 
 def test_normalize_requires_initialized_project(tmp_path, monkeypatch):
@@ -384,3 +385,139 @@ def test_normalize_rerun_peels_raw_item_out_of_legacy_merged_candidate(
             (second_raw_item_id, repaired_event_candidate["event_candidate_id"]),
         ]
     )
+
+
+def test_normalize_returns_existing_candidate_when_insert_races_for_same_raw_item(
+    tmp_path, monkeypatch
+):
+    monkeypatch.chdir(tmp_path)
+
+    runner = CliRunner()
+    runner.invoke(app, ["init"])
+    submit = runner.invoke(app, ["submit", "--text", "NVDA supplier disruption"])
+    raw_item_id = json.loads(submit.stdout)["raw_item_id"]
+
+    original_insert_event_candidate = SqliteStore.insert_event_candidate
+    raced = False
+
+    def racing_insert_event_candidate(self: SqliteStore, event_candidate):
+        nonlocal raced
+        if not raced:
+            raced = True
+            original_insert_event_candidate(
+                self,
+                event_candidate.model_copy(
+                    update={"event_candidate_id": "evt-race-winner"}
+                ),
+            )
+            raise sqlite3.IntegrityError(
+                "UNIQUE constraint failed: event_candidate_source_items.raw_item_id"
+            )
+        return original_insert_event_candidate(self, event_candidate)
+
+    monkeypatch.setattr(
+        SqliteStore,
+        "insert_event_candidate",
+        racing_insert_event_candidate,
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "normalize",
+            "--raw-item",
+            raw_item_id,
+            "--event-type",
+            "supplier_disruption",
+            "--direction",
+            "negative",
+            "--primary-entity",
+            "NVDA",
+        ],
+    )
+
+    assert result.exit_code == 0
+    event_candidate = json.loads(result.stdout)
+    assert event_candidate["event_candidate_id"] == "evt-race-winner"
+    assert event_candidate["event_type"] == "supplier_disruption"
+    assert event_candidate["direction"] == "negative"
+    assert event_candidate["primary_entities"] == ["NVDA"]
+
+    with sqlite3.connect(Path(".signal-graph/signal_graph.db")) as connection:
+        rows = connection.execute(
+            """
+            SELECT event_candidate_id, source_item_ids
+            FROM event_candidates
+            """
+        ).fetchall()
+
+    assert rows == [("evt-race-winner", json.dumps([raw_item_id]))]
+
+
+def test_normalize_refuses_to_split_processed_legacy_candidate(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+
+    runner = CliRunner()
+    runner.invoke(app, ["init"])
+    first_submit = runner.invoke(app, ["submit", "--text", "NVDA supplier disruption"])
+    second_submit = runner.invoke(app, ["submit", "--text", "NVDA supplier disruption"])
+    first_raw_item_id = json.loads(first_submit.stdout)["raw_item_id"]
+    second_raw_item_id = json.loads(second_submit.stdout)["raw_item_id"]
+
+    first_normalize = runner.invoke(app, ["normalize", "--raw-item", first_raw_item_id])
+    assert first_normalize.exit_code == 0
+    legacy_event_candidate = json.loads(first_normalize.stdout)
+
+    with sqlite3.connect(Path(".signal-graph/signal_graph.db")) as connection:
+        connection.execute(
+            """
+            UPDATE event_candidates
+            SET source_item_ids = ?
+            WHERE event_candidate_id = ?
+            """,
+            (
+                json.dumps([first_raw_item_id, second_raw_item_id]),
+                legacy_event_candidate["event_candidate_id"],
+            ),
+        )
+        connection.execute(
+            """
+            INSERT INTO event_candidate_source_items (raw_item_id, event_candidate_id)
+            VALUES (?, ?)
+            ON CONFLICT(raw_item_id) DO UPDATE SET event_candidate_id = excluded.event_candidate_id
+            """,
+            (second_raw_item_id, legacy_event_candidate["event_candidate_id"]),
+        )
+        connection.execute(
+            """
+            INSERT INTO research_bundles (
+                research_bundle_id,
+                event_candidate_id,
+                bundle_revision,
+                supporting_documents,
+                contradictions,
+                entity_resolution_results,
+                evidence_spans,
+                research_confidence,
+                research_notes,
+                created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                f"rb-{legacy_event_candidate['event_candidate_id']}",
+                legacy_event_candidate["event_candidate_id"],
+                1,
+                json.dumps([]),
+                json.dumps([]),
+                None,
+                json.dumps([]),
+                0.0,
+                None,
+                None,
+            ),
+        )
+
+    result = runner.invoke(app, ["normalize", "--raw-item", second_raw_item_id])
+
+    assert result.exit_code == 1
+    assert "processed legacy candidates cannot be auto-split" in result.stdout.lower()
