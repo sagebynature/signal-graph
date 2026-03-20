@@ -56,14 +56,22 @@ def _install_fake_graph_client(monkeypatch) -> None:
         ),
     ]
 
+    monkeypatch.setenv("NEO4J_URI", "neo4j://127.0.0.1:1")
+
     class FakeGraphClient:
         def run(self, query: str, params: dict | None = None) -> list[dict]:
             return rows
+
+        def run_in_transaction(
+            self, statements: list[tuple[str, dict | None]]
+        ) -> list[list[dict]]:
+            return [[] for _ in statements]
 
         def close(self) -> None:
             return None
 
     monkeypatch.setattr("signal_graph.services.rank.GraphClient", FakeGraphClient)
+    monkeypatch.setattr("signal_graph.cli.ingest.GraphClient", FakeGraphClient)
 
 
 def _install_unresolved_company_graph_client(monkeypatch) -> None:
@@ -78,14 +86,22 @@ def _install_unresolved_company_graph_client(monkeypatch) -> None:
         }
     ]
 
+    monkeypatch.setenv("NEO4J_URI", "neo4j://127.0.0.1:1")
+
     class FakeGraphClient:
         def run(self, query: str, params: dict | None = None) -> list[dict]:
             return rows
+
+        def run_in_transaction(
+            self, statements: list[tuple[str, dict | None]]
+        ) -> list[list[dict]]:
+            return [[] for _ in statements]
 
         def close(self) -> None:
             return None
 
     monkeypatch.setattr("signal_graph.services.rank.GraphClient", FakeGraphClient)
+    monkeypatch.setattr("signal_graph.cli.ingest.GraphClient", FakeGraphClient)
 
 
 def _install_ordering_graph_client(monkeypatch) -> None:
@@ -128,14 +144,22 @@ def _install_ordering_graph_client(monkeypatch) -> None:
         ),
     ]
 
+    monkeypatch.setenv("NEO4J_URI", "neo4j://127.0.0.1:1")
+
     class FakeGraphClient:
         def run(self, query: str, params: dict | None = None) -> list[dict]:
             return rows
+
+        def run_in_transaction(
+            self, statements: list[tuple[str, dict | None]]
+        ) -> list[list[dict]]:
+            return [[] for _ in statements]
 
         def close(self) -> None:
             return None
 
     monkeypatch.setattr("signal_graph.services.rank.GraphClient", FakeGraphClient)
+    monkeypatch.setattr("signal_graph.cli.ingest.GraphClient", FakeGraphClient)
 
 
 def _install_event_type_graph_client(monkeypatch) -> None:
@@ -178,14 +202,22 @@ def _install_event_type_graph_client(monkeypatch) -> None:
         ),
     ]
 
+    monkeypatch.setenv("NEO4J_URI", "neo4j://127.0.0.1:1")
+
     class FakeGraphClient:
         def run(self, query: str, params: dict | None = None) -> list[dict]:
             return rows
+
+        def run_in_transaction(
+            self, statements: list[tuple[str, dict | None]]
+        ) -> list[list[dict]]:
+            return [[] for _ in statements]
 
         def close(self) -> None:
             return None
 
     monkeypatch.setattr("signal_graph.services.rank.GraphClient", FakeGraphClient)
+    monkeypatch.setattr("signal_graph.cli.ingest.GraphClient", FakeGraphClient)
 
 
 def _install_configurable_graph_client(monkeypatch) -> None:
@@ -219,14 +251,22 @@ def _install_configurable_graph_client(monkeypatch) -> None:
         ),
     ]
 
+    monkeypatch.setenv("NEO4J_URI", "neo4j://127.0.0.1:1")
+
     class FakeGraphClient:
         def run(self, query: str, params: dict | None = None) -> list[dict]:
             return rows
+
+        def run_in_transaction(
+            self, statements: list[tuple[str, dict | None]]
+        ) -> list[list[dict]]:
+            return [[] for _ in statements]
 
         def close(self) -> None:
             return None
 
     monkeypatch.setattr("signal_graph.services.rank.GraphClient", FakeGraphClient)
+    monkeypatch.setattr("signal_graph.cli.ingest.GraphClient", FakeGraphClient)
 
 
 def _write_bundle_file(
