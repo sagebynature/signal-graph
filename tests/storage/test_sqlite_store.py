@@ -14,6 +14,7 @@ def test_init_db_creates_canonical_pipeline_tables(tmp_path):
 
     assert store.table_exists("raw_source_items")
     assert store.table_exists("event_candidates")
+    assert store.table_exists("event_candidate_source_items")
     assert store.table_exists("research_bundles")
     assert store.table_exists("graph_events")
 
@@ -197,3 +198,79 @@ def test_init_db_preserves_existing_rows_while_adding_provenance_columns(tmp_pat
     assert event_row[0]
     assert event_row[1] is None
     assert research_row == (1, None)
+
+
+def test_init_db_backfills_raw_item_event_lookup_rows_for_existing_candidates(tmp_path):
+    database_path = tmp_path / "signal_graph.db"
+    with sqlite3.connect(database_path) as connection:
+        connection.executescript(
+            """
+            CREATE TABLE raw_source_items (
+                raw_item_id TEXT PRIMARY KEY,
+                source_tier TEXT NOT NULL,
+                source_name TEXT NOT NULL,
+                source_url TEXT,
+                fetched_at TEXT,
+                published_at TEXT,
+                raw_text TEXT NOT NULL,
+                raw_payload TEXT
+            );
+
+            CREATE TABLE event_candidates (
+                event_candidate_id TEXT PRIMARY KEY,
+                title TEXT NOT NULL,
+                event_type TEXT NOT NULL,
+                direction TEXT NOT NULL,
+                primary_entities TEXT NOT NULL,
+                secondary_entities TEXT NOT NULL,
+                source_item_ids TEXT NOT NULL,
+                candidate_confidence REAL NOT NULL,
+                candidate_status TEXT NOT NULL
+            );
+
+            INSERT INTO raw_source_items (
+                raw_item_id,
+                source_tier,
+                source_name,
+                raw_text
+            ) VALUES
+                ('raw-1', 'manual', 'test', 'NVDA supplier disruption'),
+                ('raw-2', 'manual', 'test', 'NVDA supplier disruption');
+
+            INSERT INTO event_candidates (
+                event_candidate_id,
+                title,
+                event_type,
+                direction,
+                primary_entities,
+                secondary_entities,
+                source_item_ids,
+                candidate_confidence,
+                candidate_status
+            ) VALUES (
+                'evt-legacy',
+                'NVDA supplier disruption',
+                'unknown',
+                'unknown',
+                '[]',
+                '[]',
+                '["raw-1", "raw-2"]',
+                0.0,
+                'pending'
+            );
+            """
+        )
+
+    store = SqliteStore(database_path)
+    store.init_db()
+
+    with sqlite3.connect(database_path) as connection:
+        rows = connection.execute(
+            """
+            SELECT raw_item_id, event_candidate_id
+            FROM event_candidate_source_items
+            ORDER BY raw_item_id
+            """
+        ).fetchall()
+
+    assert rows == [("raw-1", "evt-legacy"), ("raw-2", "evt-legacy")]

@@ -85,6 +85,30 @@ def normalize_and_persist_raw_item(
     )
     existing_event_candidate = store.get_event_candidate_for_raw_item(raw_item_id)
     if existing_event_candidate is not None:
+        if len(existing_event_candidate.source_item_ids) > 1:
+            peeled_source_item_ids = [
+                source_item_id
+                for source_item_id in existing_event_candidate.source_item_ids
+                if source_item_id != raw_item_id
+            ]
+            store.update_event_candidate(
+                EventCandidate(
+                    event_candidate_id=existing_event_candidate.event_candidate_id,
+                    title=existing_event_candidate.title,
+                    event_type=existing_event_candidate.event_type,
+                    direction=existing_event_candidate.direction,
+                    primary_entities=existing_event_candidate.primary_entities,
+                    dedupe_fingerprint=existing_event_candidate.dedupe_fingerprint,
+                    secondary_entities=existing_event_candidate.secondary_entities,
+                    source_item_ids=peeled_source_item_ids,
+                    candidate_confidence=existing_event_candidate.candidate_confidence,
+                    candidate_status=existing_event_candidate.candidate_status,
+                    created_at=existing_event_candidate.created_at,
+                )
+            )
+            store.insert_event_candidate(event_candidate)
+            return event_candidate
+
         event_candidate = merge_event_candidates(
             existing_event_candidate,
             event_candidate,

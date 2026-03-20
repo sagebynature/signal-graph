@@ -25,6 +25,11 @@ CREATE TABLE IF NOT EXISTS event_candidates (
     created_at TEXT
 );
 
+CREATE TABLE IF NOT EXISTS event_candidate_source_items (
+    raw_item_id TEXT PRIMARY KEY REFERENCES raw_source_items(raw_item_id) ON DELETE CASCADE,
+    event_candidate_id TEXT NOT NULL REFERENCES event_candidates(event_candidate_id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS research_bundles (
     research_bundle_id TEXT PRIMARY KEY,
     event_candidate_id TEXT NOT NULL REFERENCES event_candidates(event_candidate_id) ON DELETE CASCADE,

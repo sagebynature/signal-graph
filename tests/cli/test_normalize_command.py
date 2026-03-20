@@ -261,3 +261,126 @@ def test_normalize_rerun_for_same_raw_item_upgrades_metadata(tmp_path, monkeypat
         json.dumps(["NVDA"]),
         json.dumps(["SMH"]),
     )
+
+
+def test_normalize_rerun_peels_raw_item_out_of_legacy_merged_candidate(
+    tmp_path, monkeypatch
+):
+    monkeypatch.chdir(tmp_path)
+
+    runner = CliRunner()
+    runner.invoke(app, ["init"])
+    first_submit = runner.invoke(app, ["submit", "--text", "NVDA supplier disruption"])
+    second_submit = runner.invoke(app, ["submit", "--text", "NVDA supplier disruption"])
+    first_raw_item_id = json.loads(first_submit.stdout)["raw_item_id"]
+    second_raw_item_id = json.loads(second_submit.stdout)["raw_item_id"]
+
+    first_normalize = runner.invoke(
+        app,
+        [
+            "normalize",
+            "--raw-item",
+            first_raw_item_id,
+            "--event-type",
+            "supplier_disruption",
+            "--direction",
+            "negative",
+            "--primary-entity",
+            "NVDA",
+        ],
+    )
+    assert first_normalize.exit_code == 0
+    legacy_event_candidate = json.loads(first_normalize.stdout)
+
+    with sqlite3.connect(Path(".signal-graph/signal_graph.db")) as connection:
+        connection.execute(
+            """
+            UPDATE event_candidates
+            SET source_item_ids = ?
+            WHERE event_candidate_id = ?
+            """,
+            (
+                json.dumps([first_raw_item_id, second_raw_item_id]),
+                legacy_event_candidate["event_candidate_id"],
+            ),
+        )
+        connection.execute(
+            """
+            INSERT INTO event_candidate_source_items (raw_item_id, event_candidate_id)
+            VALUES (?, ?)
+            ON CONFLICT(raw_item_id) DO UPDATE SET event_candidate_id = excluded.event_candidate_id
+            """,
+            (second_raw_item_id, legacy_event_candidate["event_candidate_id"]),
+        )
+
+    repair_normalize = runner.invoke(
+        app,
+        [
+            "normalize",
+            "--raw-item",
+            second_raw_item_id,
+            "--event-type",
+            "supplier_disruption",
+            "--direction",
+            "negative",
+            "--primary-entity",
+            "NVDA",
+            "--secondary-entity",
+            "SMH",
+        ],
+    )
+    repeat_normalize = runner.invoke(
+        app, ["normalize", "--raw-item", second_raw_item_id]
+    )
+
+    assert repair_normalize.exit_code == 0
+    assert repeat_normalize.exit_code == 0
+
+    repaired_event_candidate = json.loads(repair_normalize.stdout)
+    repeated_event_candidate = json.loads(repeat_normalize.stdout)
+    assert (
+        repaired_event_candidate["event_candidate_id"]
+        != legacy_event_candidate["event_candidate_id"]
+    )
+    assert (
+        repeated_event_candidate["event_candidate_id"]
+        == repaired_event_candidate["event_candidate_id"]
+    )
+    assert repaired_event_candidate["source_item_ids"] == [second_raw_item_id]
+    assert repeated_event_candidate["source_item_ids"] == [second_raw_item_id]
+    assert repaired_event_candidate["secondary_entities"] == ["SMH"]
+
+    with sqlite3.connect(Path(".signal-graph/signal_graph.db")) as connection:
+        candidate_rows = connection.execute(
+            """
+            SELECT event_candidate_id, source_item_ids
+            FROM event_candidates
+            ORDER BY event_candidate_id
+            """
+        ).fetchall()
+        lookup_rows = connection.execute(
+            """
+            SELECT raw_item_id, event_candidate_id
+            FROM event_candidate_source_items
+            ORDER BY raw_item_id
+            """
+        ).fetchall()
+
+    assert candidate_rows == sorted(
+        [
+            (
+                legacy_event_candidate["event_candidate_id"],
+                json.dumps([first_raw_item_id]),
+            ),
+            (
+                repaired_event_candidate["event_candidate_id"],
+                json.dumps([second_raw_item_id]),
+            ),
+        ]
+    )
+    assert lookup_rows == sorted(
+        [
+            (first_raw_item_id, legacy_event_candidate["event_candidate_id"]),
+            (second_raw_item_id, repaired_event_candidate["event_candidate_id"]),
+        ]
+    )
