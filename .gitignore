@@ -13,3 +13,4 @@ infra/neo4j/plugins/*
 !infra/neo4j/plugins/.gitkeep
 
 pytest*
+docs/superpowers
