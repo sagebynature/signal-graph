@@ -15,6 +15,8 @@ def _install_fake_graph_client(monkeypatch) -> None:
             "matched_entity": "TSMC",
             "relationship_path": ["DIRECT_ENTITY"],
             "path_length": 0,
+            "event_type": "capex_cut",
+            "direction": "negative",
             "research_confidence": 0.7,
             "support_count": 1,
             "evidence_count": 1,
@@ -25,6 +27,8 @@ def _install_fake_graph_client(monkeypatch) -> None:
             "matched_entity": "TSMC",
             "relationship_path": ["HOLDS"],
             "path_length": 1,
+            "event_type": "capex_cut",
+            "direction": "negative",
             "research_confidence": 0.7,
             "support_count": 1,
             "evidence_count": 1,
@@ -103,8 +107,11 @@ def test_explain_outputs_provenance_backed_sections(tmp_path, monkeypatch):
     assert "Confirmed fact: Event `TSMC cuts capex`" in result.stdout
     assert "https://example.com/tsmc-capex" in result.stdout
     assert "Graph implication: Candidate `SMH` is linked to `TSMC`" in result.stdout
+    assert "via ETF holding exposure" in result.stdout
+    assert "For a negative `capex_cut`" in result.stdout
     assert "Assistant inference: `SMH` scores" in result.stdout
     assert "Demand recovery may blunt the impact." in result.stdout
+    assert "HOLDS" not in result.stdout
 
 
 def test_explain_writes_evidence_backed_markdown_artifact(tmp_path, monkeypatch):
@@ -153,4 +160,7 @@ def test_explain_writes_evidence_backed_markdown_artifact(tmp_path, monkeypatch)
     artifact_text = artifact_path.read_text()
     assert "Confirmed fact: Event `TSMC cuts capex`" in artifact_text
     assert "Graph implication: Candidate `SMH` is linked to `TSMC`" in artifact_text
+    assert "via ETF holding exposure" in artifact_text
+    assert "For a negative `capex_cut`" in artifact_text
     assert "Assistant inference: `SMH` scores" in artifact_text
+    assert "HOLDS" not in artifact_text

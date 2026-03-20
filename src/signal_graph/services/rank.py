@@ -31,6 +31,15 @@ EVENT_PATH_BASE_SCORES: dict[tuple[str, str], dict[tuple[str, ...], float]] = {
     }
 }
 
+PATH_DESCRIPTIONS: dict[tuple[str, ...], str] = {
+    ("DIRECT_ENTITY",): "direct company exposure",
+    ("HOLDS",): "ETF holding exposure",
+    ("SUPPLIES_TO_CUSTOMER",): "downstream customer spillover",
+    ("SUPPLIES_TO_AFFECTED",): "upstream supplier exposure",
+    ("SUPPLIES_TO_CUSTOMER", "HOLDS"): "ETF exposure to downstream customer spillover",
+    ("SUPPLIES_TO_AFFECTED", "HOLDS"): "ETF exposure to upstream supplier pressure",
+}
+
 
 def _candidate_rows_query() -> str:
     return (
@@ -107,6 +116,9 @@ def _score_candidate(row: dict[str, Any]) -> RankedCandidate:
     follow_through_score = _clamp_score(
         fast_reaction_score - 0.1 + (0.05 if path_length > 0 else 0.0)
     )
+    path_description = PATH_DESCRIPTIONS.get(
+        tuple(relationship_path), "graph relationship exposure"
+    )
 
     return RankedCandidate(
         ticker=str(row["ticker"]),
@@ -115,10 +127,7 @@ def _score_candidate(row: dict[str, Any]) -> RankedCandidate:
         timing_window=classify_timing(relationship_path, event_type, direction),
         matched_entity=str(row["matched_entity"]),
         relationship_path=relationship_path,
-        reason_summary=(
-            f"{row['ticker']} is exposed to {row['matched_entity']} via "
-            f"{' -> '.join(relationship_path)}"
-        ),
+        reason_summary=f"{row['ticker']} is exposed to {row['matched_entity']} via {path_description}",
     )
 
 
