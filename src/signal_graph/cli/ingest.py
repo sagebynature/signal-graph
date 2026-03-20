@@ -6,7 +6,13 @@ import typer
 
 from signal_graph.config import DEFAULT_PROJECT_DIR
 from signal_graph.graph.client import GraphClient
-from signal_graph.graph.schema import SCHEMA_CONSTRAINTS, graph_event_query
+from signal_graph.graph.schema import (
+    REFERENCE_GRAPH_QUERIES,
+    SCHEMA_CONSTRAINTS,
+    graph_cleanup_query,
+    graph_event_params,
+    graph_event_query,
+)
 from signal_graph.models.graph import GraphEvent
 from signal_graph.storage.sqlite import SqliteStore
 
@@ -21,15 +27,21 @@ def _ingest_event_candidate(store: SqliteStore, event_candidate_id: str) -> Grap
         raise ValueError(f"research bundle not found: {event_candidate_id}")
 
     client = GraphClient()
-    for constraint in SCHEMA_CONSTRAINTS:
-        client.run(constraint)
-    client.run(
-        graph_event_query(),
-        {
-            "event_candidate_id": event_candidate.event_candidate_id,
-            "research_bundle_id": bundle.research_bundle_id,
-        },
-    )
+    try:
+        for constraint in SCHEMA_CONSTRAINTS:
+            client.run(constraint)
+        for query in REFERENCE_GRAPH_QUERIES:
+            client.run(query)
+        params = graph_event_params(event_candidate, bundle)
+        client.run(graph_cleanup_query(), params)
+        client.run(
+            graph_event_query(),
+            params,
+        )
+    finally:
+        close = getattr(client, "close", None)
+        if callable(close):
+            close()
 
     graph_event = GraphEvent(
         graph_event_id=f"ge-{event_candidate.event_candidate_id}",

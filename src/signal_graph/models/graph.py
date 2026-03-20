@@ -19,6 +19,9 @@ class RankedCandidate(BaseModel):
     fast_reaction_score: float
     follow_through_score: float
     timing_window: str = "short_drift"
+    matched_entity: str | None = None
+    relationship_path: list[str] = Field(default_factory=list)
+    reason_summary: str | None = None
 
 
 class MemoResponse(BaseModel):

@@ -15,7 +15,20 @@ def test_manual_event_flow(tmp_path, monkeypatch):
     assert runner.invoke(app, ["init"]).exit_code == 0
     submit = runner.invoke(app, ["submit", "--text", "TSMC cuts capex"])
     raw_item_id = json.loads(submit.stdout)["raw_item_id"]
-    normalized = runner.invoke(app, ["normalize", "--raw-item", raw_item_id])
+    normalized = runner.invoke(
+        app,
+        [
+            "normalize",
+            "--raw-item",
+            raw_item_id,
+            "--event-type",
+            "capex_cut",
+            "--direction",
+            "negative",
+            "--primary-entity",
+            "TSMC",
+        ],
+    )
     event_candidate_id = json.loads(normalized.stdout)["event_candidate_id"]
     bundle_path = tmp_path / "bundle.json"
     bundle_path.write_text(

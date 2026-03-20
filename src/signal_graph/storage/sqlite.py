@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 import json
 import sqlite3
 from pathlib import Path
@@ -245,3 +246,32 @@ class SqliteStore:
                     graph_event.ingest_decision,
                 ),
             )
+
+    def get_graph_event(self, graph_event_id: str) -> GraphEvent | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT
+                    graph_event_id,
+                    event_candidate_id,
+                    committed_at,
+                    trust_score,
+                    eligible_modes,
+                    ingest_decision
+                FROM graph_events
+                WHERE graph_event_id = ?
+                """,
+                (graph_event_id,),
+            ).fetchone()
+
+        if row is None:
+            return None
+
+        return GraphEvent(
+            graph_event_id=row[0],
+            event_candidate_id=row[1],
+            committed_at=datetime.fromisoformat(row[2]) if row[2] else None,
+            trust_score=row[3],
+            eligible_modes=json.loads(row[4]),
+            ingest_decision=row[5],
+        )
