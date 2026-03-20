@@ -53,7 +53,13 @@ def _ingest_event_candidate(store: SqliteStore, event_candidate_id: str) -> Grap
     return graph_event
 
 
-def ingest(event_candidate: str = typer.Option(..., "--event-candidate")) -> None:
+def ingest(
+    event_candidate: str = typer.Option(
+        ...,
+        "--event-candidate",
+        help="Event candidate id to ingest into the graph.",
+    ),
+) -> None:
     store = SqliteStore(DEFAULT_PROJECT_DIR / "signal_graph.db")
     graph_event = _ingest_event_candidate(store, event_candidate)
     print(graph_event.model_dump_json())

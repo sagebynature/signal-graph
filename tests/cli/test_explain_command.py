@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from neo4j.exceptions import ServiceUnavailable
 from typer.testing import CliRunner
 
 from signal_graph.cli.main import app
@@ -125,6 +126,48 @@ def _write_scoring_policy_config(path: Path) -> str:
         """
     )
     return str(config_path)
+
+
+def test_explain_requires_initialized_project(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+
+    runner = CliRunner()
+    result = runner.invoke(app, ["explain", "--event", "ge-123", "--candidate", "NVDA"])
+
+    assert result.exit_code == 1
+    assert result.stdout.strip() == (
+        "Project is not initialized. Run `signal-graph init` first."
+    )
+
+
+def test_explain_reports_graph_connectivity_failures_concisely(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+
+    def raise_connectivity_error(*_args, **_kwargs):
+        raise ServiceUnavailable("neo4j is unavailable")
+
+    monkeypatch.setattr(
+        "signal_graph.cli.explain.write_memo_artifact", raise_connectivity_error
+    )
+
+    runner = CliRunner()
+    runner.invoke(app, ["init"])
+    result = runner.invoke(app, ["explain", "--event", "ge-123", "--candidate", "NVDA"])
+
+    assert result.exit_code == 1
+    assert result.stdout.strip() == (
+        "Unable to reach the graph database. Check Neo4j settings and try again."
+    )
+
+
+def test_explain_help_describes_identifiers():
+    runner = CliRunner()
+
+    result = runner.invoke(app, ["explain", "--help"])
+
+    assert result.exit_code == 0
+    assert "Graph event id to explain." in result.stdout
+    assert "Candidate ticker symbol to explain." in result.stdout
 
 
 def test_explain_outputs_provenance_backed_sections(tmp_path, monkeypatch):

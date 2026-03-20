@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 
+from neo4j.exceptions import ServiceUnavailable
 from typer.testing import CliRunner
 
 from signal_graph.cli.main import app
@@ -257,6 +258,45 @@ def _write_scoring_policy_config(path) -> str:
         """
     )
     return str(config_path)
+
+
+def test_rank_requires_initialized_project(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+
+    runner = CliRunner()
+    result = runner.invoke(app, ["rank", "--event", "ge-123"])
+
+    assert result.exit_code == 1
+    assert result.stdout.strip() == (
+        "Project is not initialized. Run `signal-graph init` first."
+    )
+
+
+def test_rank_reports_graph_connectivity_failures_concisely(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+
+    def raise_connectivity_error(*_args, **_kwargs):
+        raise ServiceUnavailable("neo4j is unavailable")
+
+    monkeypatch.setattr("signal_graph.cli.rank.rank_event", raise_connectivity_error)
+
+    runner = CliRunner()
+    runner.invoke(app, ["init"])
+    result = runner.invoke(app, ["rank", "--event", "ge-123"])
+
+    assert result.exit_code == 1
+    assert result.stdout.strip() == (
+        "Unable to reach the graph database. Check Neo4j settings and try again."
+    )
+
+
+def test_rank_help_describes_graph_event_identifier():
+    runner = CliRunner()
+
+    result = runner.invoke(app, ["rank", "--help"])
+
+    assert result.exit_code == 0
+    assert "Graph event id to rank candidates for." in result.stdout
 
 
 def test_rank_returns_graph_backed_candidates_with_reasons(tmp_path, monkeypatch):

@@ -26,6 +26,27 @@ def _write_bundle_file(path: Path) -> Path:
     return bundle_path
 
 
+def test_research_requires_initialized_project(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+
+    runner = CliRunner()
+    result = runner.invoke(app, ["research", "--event-candidate", "ec-123"])
+
+    assert result.exit_code == 1
+    assert result.stdout.strip() == (
+        "Project is not initialized. Run `signal-graph init` first."
+    )
+
+
+def test_research_help_describes_event_candidate_identifier():
+    runner = CliRunner()
+
+    result = runner.invoke(app, ["research", "--help"])
+
+    assert result.exit_code == 0
+    assert "Event candidate id to attach research to." in result.stdout
+
+
 def test_research_creates_bundle_from_bundle_file(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
 

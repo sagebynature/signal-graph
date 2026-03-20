@@ -9,6 +9,42 @@ from typer.testing import CliRunner
 from signal_graph.cli.main import app
 
 
+def test_normalize_requires_initialized_project(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+
+    runner = CliRunner()
+    result = runner.invoke(app, ["normalize", "--raw-item", "raw-123"])
+
+    assert result.exit_code == 1
+    assert result.stdout.strip() == (
+        "Project is not initialized. Run `signal-graph init` first."
+    )
+
+
+def test_normalize_requires_database_file_in_initialized_project_dir(
+    tmp_path, monkeypatch
+):
+    monkeypatch.chdir(tmp_path)
+    Path(".signal-graph").mkdir()
+
+    runner = CliRunner()
+    result = runner.invoke(app, ["normalize", "--raw-item", "raw-123"])
+
+    assert result.exit_code == 1
+    assert result.stdout.strip() == (
+        "Project is not initialized. Run `signal-graph init` first."
+    )
+
+
+def test_normalize_help_describes_raw_item_identifier():
+    runner = CliRunner()
+
+    result = runner.invoke(app, ["normalize", "--help"])
+
+    assert result.exit_code == 0
+    assert "Raw source item id to normalize." in result.stdout
+
+
 def test_normalize_creates_event_candidate(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
 
