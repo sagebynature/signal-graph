@@ -1,47 +1,31 @@
 # Operator Guide
 
-This guide is for developers and local operators running the repository itself.
+This guide is for developers and local operators working inside the repository.
 
 If you want product context first, read [`../overview/product.md`](../overview/product.md). If you want the research workflow, read [`analyst-agent-guide.md`](analyst-agent-guide.md).
 
-## Prerequisites
+## Environment
 
 - Python 3.12
-- `uv` for environment and command execution
-- `ty` for type checking
-- Docker for Neo4j
-- `make` for common repo workflows
+- `uv` for dependency and command execution
+- `ty` for contributor type checks
+- Docker for the local Neo4j runtime
+- `make` for common workflows
 
 ## Bootstrap
 
 ```bash
-uv sync --group dev
+uv sync
 uv run signal-graph doctor
 uv run signal-graph init
 uv run signal-graph version
 ```
 
-Notes:
-
-- `signal-graph doctor` exits non-zero only when required tooling is missing.
-- `config: missing` is expected until you create `.signal-graph/config.toml`.
-- `signal-graph init` creates `.signal-graph/`, `.signal-graph/cache/`, `.signal-graph/artifacts/`, and `.signal-graph/signal_graph.db`.
-
-## Local State Layout
-
-Important local paths:
-
-- `.signal-graph/signal_graph.db`: SQLite system of record
-- `.signal-graph/artifacts/`: generated memo artifacts
-- `.signal-graph/cache/`: local cache directory
-- `.signal-graph/config.toml`: optional local config overrides
-- `infra/neo4j/data`: persisted Neo4j state
-- `infra/neo4j/logs`: Neo4j logs
-- `infra/neo4j/plugins`: Neo4j plugins
+`signal-graph doctor` is non-destructive. It validates runtime readiness for the local workflow, confirms `.signal-graph/config.toml` is parseable when present, and rejects malformed `NEO4J_AUTH` values. The config file itself is optional.
 
 ## Neo4j Runtime
 
-Before first startup, set `NEO4J_AUTH` if you do not want the default `neo4j/password` credential.
+Before first startup, set `NEO4J_AUTH` if you do not want the default `neo4j/<password>` credential.
 
 ```bash
 make neo4j-up
@@ -51,35 +35,29 @@ make neo4j-down
 
 Operational notes:
 
-- Wait for the container to become `healthy` before using graph-backed commands.
-- If you change `NEO4J_AUTH`, you may need to clear `infra/neo4j/data` or keep using the existing password.
-- Removing `infra/neo4j/data` also removes local graph state.
-- Runtime config can come from `.signal-graph/config.toml` and can be overridden with `NEO4J_URI`, `NEO4J_AUTH`, `NEO4J_USERNAME`, `NEO4J_PASSWORD`, and `NEO4J_DATABASE`.
+- wait for the container to become `healthy` before connecting
+- `./infra/neo4j/data` holds persisted database state
+- removing `./infra/neo4j/data` also removes local graph state
+- `NEO4J_AUTH` must use the `username/password` format with non-empty values
+- if you change `NEO4J_AUTH`, you may need to clear `./infra/neo4j/data` or keep using the existing password
+- runtime config is loaded from `.signal-graph/config.toml` when present and can be overridden with `NEO4J_URI`, `NEO4J_AUTH`, `NEO4J_USERNAME`, `NEO4J_PASSWORD`, and `NEO4J_DATABASE`
+- `signal-graph doctor` reports malformed or unreadable config explicitly; other commands that load runtime config currently raise an error when they encounter invalid config
 
-## Local Config
+## Scoring Policy Config
 
-The optional `.signal-graph/config.toml` file has two practical uses in this cut:
+Scoring policy overrides live in `.signal-graph/config.toml` under `[scoring_policy]`. The file is optional, but if it exists it must be valid TOML. The merge order is:
 
-- Neo4j connection settings
-- scoring-policy overrides
+1. built-in defaults from the repo
+2. local path overrides matched by `relationship_path`
+3. local event overrides matched by `event_type + direction + relationship_path`
+
+Malformed scoring policy config is not ignored. `signal-graph doctor` reports it explicitly, and commands that load config currently raise a `ValueError`.
 
 Reference example:
 
-- [`../examples/scoring-policy.example.toml`](../examples/scoring-policy.example.toml)
+- `docs/examples/scoring-policy.example.toml`
 
-## Scoring Policy Overrides
-
-Scoring policy overrides live under `[scoring_policy]`.
-
-Merge order:
-
-1. Built-in defaults from the repo
-2. Local path overrides matched by `relationship_path`
-3. Local event overrides matched by `event_type + direction + relationship_path`
-
-Malformed scoring policy config fails fast. It is not ignored.
-
-Example: make negative `capex_cut` events harsher on upstream suppliers.
+Example: make negative `capex_cut` events more punitive for upstream suppliers.
 
 ```toml
 [scoring_policy]
@@ -95,7 +73,7 @@ timing_window = "immediate"
 rationale = "For a negative `capex_cut`, upstream suppliers can react quickly because lower spending often hits equipment and input demand first."
 ```
 
-Example: add an `export_control` rule that boosts ETF spillover.
+Example: add a new `export_control` policy that boosts ETF spillover.
 
 ```toml
 [scoring_policy]
@@ -112,26 +90,25 @@ timing_window = "immediate"
 rationale = "For a negative `export_control`, sector ETF exposure can move immediately."
 ```
 
-## Manual Smoke Test
-
-The commands below use placeholder IDs. Replace them with the values returned by the previous command.
+## Common Verification Commands
 
 ```bash
-uv run signal-graph submit --text "TSMC cuts capex"
-uv run signal-graph normalize \
-  --raw-item RAW_ITEM_ID \
-  --event-type capex_cut \
-  --direction negative \
-  --primary-entity TSMC
-uv run signal-graph research --event-candidate EVENT_CANDIDATE_ID --bundle-file bundle.json
-uv run signal-graph ingest --event-candidate EVENT_CANDIDATE_ID
-uv run signal-graph rank --event GRAPH_EVENT_ID
-uv run signal-graph explain --event GRAPH_EVENT_ID --candidate SMH
+uv run python -m pytest -v
+uv run ty check
+uv run signal-graph doctor
+uv run signal-graph version
 ```
 
-Example `bundle.json`:
+`uv run ty check` is for contributors. `signal-graph doctor` only requires runtime tooling.
 
-```json
+## Manual Smoke Test
+
+The full copy-pasteable smoke flow lives in [`docs/runbooks/runnable-smoke-test.md`](runnable-smoke-test.md). It uses command substitution to capture real ids, keeps `.signal-graph/` state in a fresh temp directory, and explicitly seeds the demo reference graph before ranking.
+
+If you want the short form from the repo root:
+
+```bash
+cat > bundle.json <<'JSON'
 {
   "supporting_documents": ["https://example.com/tsmc-capex"],
   "contradictions": ["Demand recovery may offset the capex cut."],
@@ -140,40 +117,53 @@ Example `bundle.json`:
   "research_confidence": 0.7,
   "research_notes": "Capex cuts often pressure semiconductor equipment demand."
 }
+JSON
+uv run signal-graph init
+uv run python - <<'PY'
+from signal_graph.graph.client import GraphClient
+from signal_graph.graph.schema import demo_reference_graph_statements
+
+client = GraphClient()
+try:
+    client.run_in_transaction(demo_reference_graph_statements())
+finally:
+    client.close()
+PY
+raw_item_id=$(uv run signal-graph submit --text "TSMC cuts capex" | uv run python -c 'import json,sys; print(json.load(sys.stdin)["raw_item_id"])')
+event_candidate_id=$(uv run signal-graph normalize --raw-item "$raw_item_id" --event-type capex_cut --direction negative --primary-entity TSMC | uv run python -c 'import json,sys; print(json.load(sys.stdin)["event_candidate_id"])')
+uv run signal-graph research --event-candidate "$event_candidate_id" --bundle-file bundle.json
+graph_event_id=$(uv run signal-graph ingest --event-candidate "$event_candidate_id" | uv run python -c 'import json,sys; print(json.load(sys.stdin)["graph_event_id"])')
+uv run signal-graph rank --event "$graph_event_id"
+uv run signal-graph explain --event "$graph_event_id" --candidate SMH
 ```
 
 Expected behavior:
 
-- `submit` persists a `RawSourceItem` in SQLite and returns `raw_item_id`
-- `normalize` returns `event_candidate_id`
-- `research` stores a `ResearchBundle`
-- `ingest` returns `graph_event_id`
-- `rank` returns JSON candidates with `relationship_path` and `reason_summary`
-- `explain` prints a memo and writes a markdown artifact under `.signal-graph/artifacts/`
-
-## Verification Commands
-
-```bash
-uv run --group dev python -m pytest -v
-uv run ty check
-uv run signal-graph doctor
-uv run signal-graph version
-```
+- `fetch --source web` returns deterministic demo output today; it is not live web retrieval
+- `fetch --source premium` is currently disabled and exits with a clear placeholder message
+- `research` fails on an empty bundle unless `--allow-empty` is set
+- `ingest` updates the event graph transactionally but does not seed demo instruments automatically
+- `rank` returns JSON instrument candidates with `instrument_id`, `asset_kind`, `relationship_path`, and `reason_summary`
+- `rank` is only as broad as the instrument reference data already loaded into Neo4j
+- `explain` writes a markdown memo under `.signal-graph/artifacts/`
+- local scoring policy config can change rank order, timing windows, path descriptions, and memo rationale without code edits
 
 ## Repository Responsibilities
 
-- `src/signal_graph/cli/`: command entrypoints
+- `src/signal_graph/cli/`: CLI entrypoints and command surface
 - `src/signal_graph/services/`: pipeline logic
-- `src/signal_graph/models/`: canonical objects
-- `src/signal_graph/storage/`: SQLite access and schema
+- `src/signal_graph/models/`: canonical data models
+- `src/signal_graph/storage/`: local SQLite access and schema
 - `src/signal_graph/graph/`: graph client and schema helpers
-- `tests/`: CLI, service, graph, storage, docs, and end-to-end coverage
+- `tests/`: CLI, storage, docs, and end-to-end verification
 
 ## Troubleshooting
 
-- `signal-graph doctor` fails: install missing tooling before debugging repo code.
-- Neo4j auth mismatch: either keep the existing password or reset `infra/neo4j/data`.
-- `research` says the bundle file is missing: remember that `--bundle-file` is resolved from your current working directory.
-- Rank output looks empty or weak: confirm the event has a clear `--primary-entity` and that the local graph has relevant coverage.
-- Rank or memo output changed unexpectedly: inspect `.signal-graph/config.toml` and compare it with [`../examples/scoring-policy.example.toml`](../examples/scoring-policy.example.toml).
-- Unexpected local state: inspect `.signal-graph/signal_graph.db` and `.signal-graph/artifacts/`.
+- `signal-graph doctor` fails: read the reported config or `NEO4J_AUTH` error first, then install any missing runtime tooling before debugging application code
+- Neo4j auth mismatch: either keep the existing password or reset the local data directory
+- Unexpected local state: inspect `.signal-graph/signal_graph.db` and `.signal-graph/artifacts/`
+- Rank output looks empty or weak: confirm your normalized event has `--primary-entity` data and that tradable instrument reference data has been loaded into Neo4j
+- `fetch --source web` looks fake: that is expected today; it returns deterministic stub content from `example.com`
+- `fetch --source premium` exits immediately: that is expected until a real premium connector is implemented
+- Rank or memo behavior changed unexpectedly: inspect `.signal-graph/config.toml` and compare it with `docs/examples/scoring-policy.example.toml`
+- Smoke test drift: run `uv run python -m pytest -v` first, then reproduce the failing CLI step manually

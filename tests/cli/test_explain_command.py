@@ -3,12 +3,67 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from neo4j.exceptions import ServiceUnavailable
 from typer.testing import CliRunner
 
 from signal_graph.cli.main import app
 
 
+def _candidate_row(
+    ticker: str,
+    matched_entity: str,
+    relationship_path: list[str],
+    path_length: int,
+    *,
+    asset_kind: str,
+    event_type: str,
+    direction: str,
+) -> dict:
+    return {
+        "instrument_id": f"{asset_kind}:{ticker}",
+        "ticker": ticker,
+        "asset_kind": asset_kind,
+        "matched_entity": matched_entity,
+        "relationship_path": relationship_path,
+        "path_length": path_length,
+        "event_type": event_type,
+        "direction": direction,
+    }
+
+
 def _install_fake_graph_client(monkeypatch) -> None:
+    rows = [
+        _candidate_row(
+            "TSMC",
+            "TSMC",
+            ["DIRECT_ENTITY"],
+            0,
+            asset_kind="equity",
+            event_type="capex_cut",
+            direction="negative",
+        ),
+        _candidate_row(
+            "SMH",
+            "TSMC",
+            ["HOLDS"],
+            1,
+            asset_kind="etf",
+            event_type="capex_cut",
+            direction="negative",
+        ),
+    ]
+
+    class FakeGraphClient:
+        def run(self, query: str, params: dict | None = None) -> list[dict]:
+            return rows
+
+        def close(self) -> None:
+            return None
+
+    monkeypatch.setattr("signal_graph.services.rank.GraphClient", FakeGraphClient)
+
+
+def _install_unresolved_company_graph_client(monkeypatch) -> None:
     rows = [
         {
             "ticker": "TSMC",
@@ -17,23 +72,16 @@ def _install_fake_graph_client(monkeypatch) -> None:
             "path_length": 0,
             "event_type": "capex_cut",
             "direction": "negative",
-            "research_confidence": 0.7,
-            "support_count": 1,
-            "evidence_count": 1,
-            "contradiction_count": 1,
         },
-        {
-            "ticker": "SMH",
-            "matched_entity": "TSMC",
-            "relationship_path": ["HOLDS"],
-            "path_length": 1,
-            "event_type": "capex_cut",
-            "direction": "negative",
-            "research_confidence": 0.7,
-            "support_count": 1,
-            "evidence_count": 1,
-            "contradiction_count": 1,
-        },
+        _candidate_row(
+            "SMH",
+            "TSMC",
+            ["HOLDS"],
+            1,
+            asset_kind="etf",
+            event_type="capex_cut",
+            direction="negative",
+        ),
     ]
 
     class FakeGraphClient:
@@ -48,30 +96,24 @@ def _install_fake_graph_client(monkeypatch) -> None:
 
 def _install_configurable_graph_client(monkeypatch) -> None:
     rows = [
-        {
-            "ticker": "NVDA",
-            "matched_entity": "NVDA",
-            "relationship_path": ["DIRECT_ENTITY"],
-            "path_length": 0,
-            "event_type": "export_control",
-            "direction": "negative",
-            "research_confidence": 0.7,
-            "support_count": 1,
-            "evidence_count": 1,
-            "contradiction_count": 1,
-        },
-        {
-            "ticker": "SMH",
-            "matched_entity": "NVDA",
-            "relationship_path": ["HOLDS"],
-            "path_length": 1,
-            "event_type": "export_control",
-            "direction": "negative",
-            "research_confidence": 0.7,
-            "support_count": 1,
-            "evidence_count": 1,
-            "contradiction_count": 1,
-        },
+        _candidate_row(
+            "NVDA",
+            "NVDA",
+            ["DIRECT_ENTITY"],
+            0,
+            asset_kind="equity",
+            event_type="export_control",
+            direction="negative",
+        ),
+        _candidate_row(
+            "SMH",
+            "NVDA",
+            ["HOLDS"],
+            1,
+            asset_kind="etf",
+            event_type="export_control",
+            direction="negative",
+        ),
     ]
 
     class FakeGraphClient:
@@ -101,15 +143,23 @@ def _write_bundle_file(path: Path) -> str:
     return str(bundle_path)
 
 
-def _write_scoring_policy_config(path: Path) -> str:
+def _write_scoring_policy_config(
+    path: Path,
+    *,
+    description: str = "policy-tuned ETF spillover",
+    rationale: str = (
+        "For a negative `export_control`, sector ETF exposure can move immediately."
+    ),
+    base_score: float = 0.64,
+) -> str:
     config_path = path / ".signal-graph" / "config.toml"
     config_path.write_text(
-        """
+        f"""
         [scoring_policy]
 
         [[scoring_policy.paths]]
         relationship_path = ["HOLDS"]
-        description = "policy-tuned ETF spillover"
+        description = "{description}"
         base_score = 0.5
         timing_window = "immediate"
 
@@ -119,12 +169,54 @@ def _write_scoring_policy_config(path: Path) -> str:
 
         [[scoring_policy.events.overrides]]
         relationship_path = ["HOLDS"]
-        base_score = 0.64
+        base_score = {base_score}
         timing_window = "immediate"
-        rationale = "For a negative `export_control`, sector ETF exposure can move immediately."
+        rationale = "{rationale}"
         """
     )
     return str(config_path)
+
+
+def test_explain_requires_initialized_project(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+
+    runner = CliRunner()
+    result = runner.invoke(app, ["explain", "--event", "ge-123", "--candidate", "NVDA"])
+
+    assert result.exit_code == 1
+    assert result.stdout.strip() == (
+        "Project is not initialized. Run `signal-graph init` first."
+    )
+
+
+def test_explain_reports_graph_connectivity_failures_concisely(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+
+    def raise_connectivity_error(*_args, **_kwargs):
+        raise ServiceUnavailable("neo4j is unavailable")
+
+    monkeypatch.setattr(
+        "signal_graph.cli.explain.write_memo_artifact", raise_connectivity_error
+    )
+
+    runner = CliRunner()
+    runner.invoke(app, ["init"])
+    result = runner.invoke(app, ["explain", "--event", "ge-123", "--candidate", "NVDA"])
+
+    assert result.exit_code == 1
+    assert result.stdout.strip() == (
+        "Unable to reach the graph database. Check Neo4j settings and try again."
+    )
+
+
+def test_explain_help_describes_identifiers():
+    runner = CliRunner()
+
+    result = runner.invoke(app, ["explain", "--help"])
+
+    assert result.exit_code == 0
+    assert "Graph event id to explain." in result.stdout
+    assert "Candidate ticker symbol to explain." in result.stdout
 
 
 def test_explain_outputs_provenance_backed_sections(tmp_path, monkeypatch):
@@ -176,6 +268,52 @@ def test_explain_outputs_provenance_backed_sections(tmp_path, monkeypatch):
     assert "Assistant inference: `SMH` scores" in result.stdout
     assert "Demand recovery may blunt the impact." in result.stdout
     assert "HOLDS" not in result.stdout
+
+
+def test_explain_rejects_candidate_that_is_not_a_ranked_instrument(
+    tmp_path, monkeypatch
+):
+    monkeypatch.chdir(tmp_path)
+    _install_unresolved_company_graph_client(monkeypatch)
+
+    runner = CliRunner()
+    runner.invoke(app, ["init"])
+    submit = runner.invoke(app, ["submit", "--text", "TSMC cuts capex"])
+    raw_item_id = json.loads(submit.stdout)["raw_item_id"]
+    normalized = runner.invoke(
+        app,
+        [
+            "normalize",
+            "--raw-item",
+            raw_item_id,
+            "--event-type",
+            "capex_cut",
+            "--direction",
+            "negative",
+            "--primary-entity",
+            "TSMC",
+        ],
+    )
+    event_candidate_id = json.loads(normalized.stdout)["event_candidate_id"]
+    runner.invoke(
+        app,
+        [
+            "research",
+            "--event-candidate",
+            event_candidate_id,
+            "--bundle-file",
+            _write_bundle_file(tmp_path),
+        ],
+    )
+    ingested = runner.invoke(app, ["ingest", "--event-candidate", event_candidate_id])
+    graph_event_id = json.loads(ingested.stdout)["graph_event_id"]
+
+    result = runner.invoke(
+        app, ["explain", "--event", graph_event_id, "--candidate", "TSMC"]
+    )
+
+    assert result.exit_code == 1
+    assert result.stdout.strip() == "ranked candidate not found: TSMC"
 
 
 def test_explain_writes_evidence_backed_markdown_artifact(tmp_path, monkeypatch):
@@ -274,3 +412,70 @@ def test_explain_uses_local_policy_rationale(tmp_path, monkeypatch):
     assert result.exit_code == 0
     assert "policy-tuned ETF spillover" in result.stdout
     assert "For a negative `export_control`" in result.stdout
+
+
+def test_explain_keeps_existing_memo_stable_after_policy_change(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    _install_configurable_graph_client(monkeypatch)
+
+    runner = CliRunner()
+    runner.invoke(app, ["init"])
+    _write_scoring_policy_config(
+        tmp_path,
+        description="snapshot ETF spillover",
+        rationale="Snapshot rationale should stay stable for the ingested graph event.",
+    )
+    submit = runner.invoke(app, ["submit", "--text", "US export controls tighten"])
+    raw_item_id = json.loads(submit.stdout)["raw_item_id"]
+    normalized = runner.invoke(
+        app,
+        [
+            "normalize",
+            "--raw-item",
+            raw_item_id,
+            "--event-type",
+            "export_control",
+            "--direction",
+            "negative",
+            "--primary-entity",
+            "NVDA",
+        ],
+    )
+    event_candidate_id = json.loads(normalized.stdout)["event_candidate_id"]
+    runner.invoke(
+        app,
+        [
+            "research",
+            "--event-candidate",
+            event_candidate_id,
+            "--bundle-file",
+            _write_bundle_file(tmp_path),
+        ],
+    )
+    ingested = runner.invoke(app, ["ingest", "--event-candidate", event_candidate_id])
+    graph_event_id = json.loads(ingested.stdout)["graph_event_id"]
+
+    original = runner.invoke(
+        app, ["explain", "--event", graph_event_id, "--candidate", "SMH"]
+    )
+
+    assert original.exit_code == 0
+    assert "snapshot ETF spillover" in original.stdout
+    assert "Snapshot rationale should stay stable" in original.stdout
+
+    _write_scoring_policy_config(
+        tmp_path,
+        description="mutated ETF spillover",
+        rationale="Mutated rationale should not appear for the existing graph event.",
+        base_score=0.12,
+    )
+    replayed = runner.invoke(
+        app, ["explain", "--event", graph_event_id, "--candidate", "SMH"]
+    )
+
+    assert replayed.exit_code == 0
+    assert replayed.stdout == original.stdout
+    assert "snapshot ETF spillover" in replayed.stdout
+    assert "Snapshot rationale should stay stable" in replayed.stdout
+    assert "mutated ETF spillover" not in replayed.stdout
+    assert "Mutated rationale should not appear" not in replayed.stdout

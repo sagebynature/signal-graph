@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install uv
+      - run: uv sync --group dev
+      - run: uv run ty check
+
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install uv
+      - run: uv sync --group dev
+      - run: uv run python -m pytest -v -m "not integration"
+
+  integration:
+    runs-on: ubuntu-latest
+    env:
+      CI: "true"
+      SIGNAL_GRAPH_RUN_INTEGRATION: "1"
+      NEO4J_AUTH: neo4j/password
+      NEO4J_URI: neo4j://localhost:7687
+      NEO4J_DATABASE: neo4j
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install uv
+      - run: uv sync --group dev
+      - run: mkdir -p infra/neo4j/data infra/neo4j/logs infra/neo4j/plugins
+      - run: docker compose up -d neo4j
+      - name: Wait for Neo4j health
+        run: |
+          for i in $(seq 1 30); do
+            if docker compose ps neo4j | grep -q "healthy"; then
+              docker compose ps
+              exit 0
+            fi
+            sleep 5
+          done
+          docker compose ps
+          exit 1
+      - run: uv run python -m pytest -v tests/e2e/test_compose_backed_flow.py -m integration
+      - if: always()
+        run: docker compose down -v

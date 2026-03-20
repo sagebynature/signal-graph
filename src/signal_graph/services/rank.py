@@ -1,52 +1,80 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal, cast
 
 from signal_graph.config import DEFAULT_PROJECT_DIR
 from signal_graph.graph.client import GraphClient
-from signal_graph.models.graph import RankedCandidate
+from signal_graph.models.graph import GraphEvent, RankedCandidate
+from signal_graph.models.research import ResearchBundle
 from signal_graph.services.scoring_policy import get_scoring_policy
-from signal_graph.services.timing import classify_timing
 from signal_graph.storage.sqlite import SqliteStore
+
+_VALID_ASSET_KINDS = {"equity", "etf"}
 
 
 def _candidate_rows_query() -> str:
     return (
-        "MATCH (e:Event {event_candidate_id: $event_candidate_id})-[:HAS_RESEARCH]->(rb:ResearchBundle) "
+        "MATCH (e:Event {event_candidate_id: $event_candidate_id}) "
         "MATCH (e)-[:AFFECTS|IMPACTS]->(company:Company) "
-        "WITH e, rb, company, "
-        "     COUNT { (rb)-[:SUPPORTS]->(:Document) } AS support_count, "
-        "     COUNT { (rb)-[:HAS_EVIDENCE]->(:EvidenceSpan) } AS evidence_count, "
-        "     COUNT { (rb)-[:CONTRADICTED_BY]->(:Claim) } AS contradiction_count "
+        "WITH e, company "
         "CALL (company) { "
         "    WITH company "
-        "    RETURN company.ticker AS ticker, company.ticker AS matched_entity, ['DIRECT_ENTITY'] AS relationship_path, 0 AS path_length "
+        "    MATCH (instrument:Instrument)-[:REPRESENTS]->(company) "
+        "    RETURN coalesce(instrument.instrument_id, toLower(coalesce(instrument.kind, 'equity')) + ':' + instrument.ticker) AS instrument_id, "
+        "           instrument.ticker AS ticker, "
+        "           toLower(coalesce(instrument.kind, 'equity')) AS asset_kind, "
+        "           company.ticker AS matched_entity, "
+        "           ['DIRECT_ENTITY'] AS relationship_path, "
+        "           0 AS path_length "
         "    UNION "
         "    WITH company "
         "    MATCH (instrument:Instrument)-[:HOLDS]->(company) "
-        "    RETURN instrument.ticker AS ticker, company.ticker AS matched_entity, ['HOLDS'] AS relationship_path, 1 AS path_length "
+        "    RETURN coalesce(instrument.instrument_id, toLower(coalesce(instrument.kind, 'etf')) + ':' + instrument.ticker) AS instrument_id, "
+        "           instrument.ticker AS ticker, "
+        "           toLower(coalesce(instrument.kind, 'etf')) AS asset_kind, "
+        "           company.ticker AS matched_entity, "
+        "           ['HOLDS'] AS relationship_path, "
+        "           1 AS path_length "
         "    UNION "
         "    WITH company "
-        "    MATCH (company)-[:SUPPLIES]->(downstream:Company) "
-        "    RETURN downstream.ticker AS ticker, company.ticker AS matched_entity, ['SUPPLIES_TO_CUSTOMER'] AS relationship_path, 1 AS path_length "
+        "    MATCH (company)-[:SUPPLIES]->(downstream:Company)<-[:REPRESENTS]-(instrument:Instrument) "
+        "    RETURN coalesce(instrument.instrument_id, toLower(coalesce(instrument.kind, 'equity')) + ':' + instrument.ticker) AS instrument_id, "
+        "           instrument.ticker AS ticker, "
+        "           toLower(coalesce(instrument.kind, 'equity')) AS asset_kind, "
+        "           company.ticker AS matched_entity, "
+        "           ['SUPPLIES_TO_CUSTOMER'] AS relationship_path, "
+        "           1 AS path_length "
         "    UNION "
         "    WITH company "
         "    MATCH (company)-[:SUPPLIES]->(downstream:Company)<-[:HOLDS]-(instrument:Instrument) "
-        "    RETURN instrument.ticker AS ticker, company.ticker AS matched_entity, ['SUPPLIES_TO_CUSTOMER', 'HOLDS'] AS relationship_path, 2 AS path_length "
+        "    RETURN coalesce(instrument.instrument_id, toLower(coalesce(instrument.kind, 'etf')) + ':' + instrument.ticker) AS instrument_id, "
+        "           instrument.ticker AS ticker, "
+        "           toLower(coalesce(instrument.kind, 'etf')) AS asset_kind, "
+        "           company.ticker AS matched_entity, "
+        "           ['SUPPLIES_TO_CUSTOMER', 'HOLDS'] AS relationship_path, "
+        "           2 AS path_length "
         "    UNION "
         "    WITH company "
-        "    MATCH (upstream:Company)-[:SUPPLIES]->(company) "
-        "    RETURN upstream.ticker AS ticker, company.ticker AS matched_entity, ['SUPPLIES_TO_AFFECTED'] AS relationship_path, 1 AS path_length "
+        "    MATCH (upstream:Company)-[:SUPPLIES]->(company)<-[:REPRESENTS]-(instrument:Instrument) "
+        "    RETURN coalesce(instrument.instrument_id, toLower(coalesce(instrument.kind, 'equity')) + ':' + instrument.ticker) AS instrument_id, "
+        "           instrument.ticker AS ticker, "
+        "           toLower(coalesce(instrument.kind, 'equity')) AS asset_kind, "
+        "           company.ticker AS matched_entity, "
+        "           ['SUPPLIES_TO_AFFECTED'] AS relationship_path, "
+        "           1 AS path_length "
         "    UNION "
         "    WITH company "
         "    MATCH (upstream:Company)-[:SUPPLIES]->(company)<-[:HOLDS]-(instrument:Instrument) "
-        "    RETURN instrument.ticker AS ticker, company.ticker AS matched_entity, ['SUPPLIES_TO_AFFECTED', 'HOLDS'] AS relationship_path, 2 AS path_length "
+        "    RETURN coalesce(instrument.instrument_id, toLower(coalesce(instrument.kind, 'etf')) + ':' + instrument.ticker) AS instrument_id, "
+        "           instrument.ticker AS ticker, "
+        "           toLower(coalesce(instrument.kind, 'etf')) AS asset_kind, "
+        "           company.ticker AS matched_entity, "
+        "           ['SUPPLIES_TO_AFFECTED', 'HOLDS'] AS relationship_path, "
+        "           2 AS path_length "
         "} "
-        "RETURN ticker, matched_entity, relationship_path, path_length, "
+        "RETURN instrument_id, ticker, asset_kind, matched_entity, relationship_path, path_length, "
         "       e.event_type AS event_type, "
-        "       e.direction AS direction, "
-        "       toFloat(rb.research_confidence) AS research_confidence, "
-        "       support_count, evidence_count, contradiction_count"
+        "       e.direction AS direction"
     )
 
 
@@ -54,22 +82,52 @@ def _clamp_score(value: float) -> float:
     return max(0.0, min(1.0, round(value, 2)))
 
 
-def _score_candidate(row: dict[str, Any]) -> RankedCandidate:
+def _resolve_research_bundle(
+    store: SqliteStore, graph_event: GraphEvent
+) -> ResearchBundle:
+    if graph_event.research_bundle_id:
+        bundle = store.get_research_bundle_by_id(graph_event.research_bundle_id)
+        if bundle is None:
+            raise ValueError(
+                f"research bundle not found: {graph_event.research_bundle_id}"
+            )
+        return bundle
+
+    bundle = store.get_latest_research_bundle(graph_event.event_candidate_id)
+    if bundle is None:
+        raise ValueError(f"research bundle not found: {graph_event.event_candidate_id}")
+    return bundle
+
+
+def _resolve_scoring_policy(bundle: ResearchBundle):
+    return bundle.scoring_policy_snapshot or get_scoring_policy()
+
+
+def _is_rankable_trade_candidate(row: dict[str, Any]) -> bool:
+    instrument_id = str(row.get("instrument_id", "")).strip()
+    ticker = str(row.get("ticker", "")).strip()
+    asset_kind = str(row.get("asset_kind", "")).lower()
+    return bool(instrument_id and ticker and asset_kind in _VALID_ASSET_KINDS)
+
+
+def _score_candidate(
+    row: dict[str, Any], *, research_bundle: ResearchBundle
+) -> RankedCandidate:
     relationship_path = list(row["relationship_path"])
     path_length = int(row["path_length"])
     event_type = str(row.get("event_type", ""))
     direction = str(row.get("direction", ""))
-    research_confidence = float(row["research_confidence"])
-    support_count = int(row["support_count"])
-    evidence_count = int(row["evidence_count"])
-    contradiction_count = int(row["contradiction_count"])
 
-    resolved_policy = get_scoring_policy().resolve(
+    resolved_policy = _resolve_scoring_policy(research_bundle).resolve(
         relationship_path,
         event_type=event_type,
         direction=direction,
     )
     base_score = resolved_policy.base_score
+    research_confidence = research_bundle.research_confidence
+    support_count = len(research_bundle.supporting_documents)
+    evidence_count = len(research_bundle.evidence_spans)
+    contradiction_count = len(research_bundle.contradictions)
 
     evidence_bonus = min(
         0.25,
@@ -83,11 +141,18 @@ def _score_candidate(row: dict[str, Any]) -> RankedCandidate:
         fast_reaction_score - 0.1 + (0.05 if path_length > 0 else 0.0)
     )
 
+    asset_kind = cast(
+        Literal["equity", "etf"],
+        str(row["asset_kind"]).lower(),
+    )
+
     return RankedCandidate(
+        instrument_id=str(row["instrument_id"]),
         ticker=str(row["ticker"]),
+        asset_kind=asset_kind,
         fast_reaction_score=fast_reaction_score,
         follow_through_score=follow_through_score,
-        timing_window=classify_timing(relationship_path, event_type, direction),
+        timing_window=resolved_policy.timing_window,
         matched_entity=str(row["matched_entity"]),
         relationship_path=relationship_path,
         reason_summary=(
@@ -102,6 +167,7 @@ def rank_event(graph_event_id: str) -> list[RankedCandidate]:
     graph_event = store.get_graph_event(graph_event_id)
     if graph_event is None:
         raise ValueError(f"graph event not found: {graph_event_id}")
+    research_bundle = _resolve_research_bundle(store, graph_event)
 
     client = GraphClient()
     try:
@@ -114,18 +180,20 @@ def rank_event(graph_event_id: str) -> list[RankedCandidate]:
         if callable(close):
             close()
 
-    ranked_by_ticker: dict[str, RankedCandidate] = {}
+    ranked_by_instrument_id: dict[str, RankedCandidate] = {}
     for row in rows:
-        candidate = _score_candidate(row)
-        existing = ranked_by_ticker.get(candidate.ticker)
+        if not _is_rankable_trade_candidate(row):
+            continue
+        candidate = _score_candidate(row, research_bundle=research_bundle)
+        existing = ranked_by_instrument_id.get(candidate.instrument_id)
         if (
             existing is None
             or candidate.fast_reaction_score > existing.fast_reaction_score
         ):
-            ranked_by_ticker[candidate.ticker] = candidate
+            ranked_by_instrument_id[candidate.instrument_id] = candidate
 
     return sorted(
-        ranked_by_ticker.values(),
+        ranked_by_instrument_id.values(),
         key=lambda candidate: (
             candidate.fast_reaction_score,
             candidate.follow_through_score,

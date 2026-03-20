@@ -56,3 +56,17 @@ def test_fetch_web_persists_raw_items_to_sqlite(tmp_path, monkeypatch):
         "Public web result for chip export restriction",
         "chip export restriction",
     )
+
+
+def test_fetch_premium_reports_placeholder_status(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+
+    runner = CliRunner()
+    runner.invoke(app, ["init"])
+    result = runner.invoke(
+        app,
+        ["fetch", "--source", "premium", "--query", "chip export restriction"],
+    )
+
+    assert result.exit_code == 1
+    assert result.stdout.strip() == "premium fetch is not implemented in this build."

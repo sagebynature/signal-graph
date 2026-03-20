@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 SCHEMA_CONSTRAINTS = [
     "CREATE CONSTRAINT company_ticker IF NOT EXISTS FOR (c:Company) REQUIRE c.ticker IS UNIQUE",
     "CREATE CONSTRAINT instrument_ticker IF NOT EXISTS FOR (i:Instrument) REQUIRE i.ticker IS UNIQUE",
@@ -10,14 +12,39 @@ SCHEMA_CONSTRAINTS = [
 ]
 
 
-REFERENCE_GRAPH_QUERIES = [
+DEMO_REFERENCE_GRAPH_QUERIES = [
     "MERGE (c:Company {ticker: 'TSMC'}) SET c.name = 'Taiwan Semiconductor Manufacturing Company'",
     "MERGE (c:Company {ticker: 'NVDA'}) SET c.name = 'NVIDIA'",
     "MERGE (c:Company {ticker: 'AMD'}) SET c.name = 'Advanced Micro Devices'",
     "MERGE (c:Company {ticker: 'ASML'}) SET c.name = 'ASML'",
     "MERGE (c:Company {ticker: 'INTC'}) SET c.name = 'Intel'",
-    "MERGE (:Instrument {ticker: 'SMH', kind: 'ETF'})",
-    "MERGE (:Instrument {ticker: 'SOXX', kind: 'ETF'})",
+    "MERGE (i:Instrument {ticker: 'TSMC'}) SET i.kind = 'equity', i.instrument_id = 'equity:TSMC'",
+    "MERGE (i:Instrument {ticker: 'NVDA'}) SET i.kind = 'equity', i.instrument_id = 'equity:NVDA'",
+    "MERGE (i:Instrument {ticker: 'AMD'}) SET i.kind = 'equity', i.instrument_id = 'equity:AMD'",
+    "MERGE (i:Instrument {ticker: 'ASML'}) SET i.kind = 'equity', i.instrument_id = 'equity:ASML'",
+    "MERGE (i:Instrument {ticker: 'INTC'}) SET i.kind = 'equity', i.instrument_id = 'equity:INTC'",
+    "MERGE (i:Instrument {ticker: 'SMH'}) SET i.kind = 'etf', i.instrument_id = 'etf:SMH'",
+    "MERGE (i:Instrument {ticker: 'SOXX'}) SET i.kind = 'etf', i.instrument_id = 'etf:SOXX'",
+    (
+        "MATCH (i:Instrument {ticker: 'TSMC'}), (c:Company {ticker: 'TSMC'}) "
+        "MERGE (i)-[:REPRESENTS]->(c)"
+    ),
+    (
+        "MATCH (i:Instrument {ticker: 'NVDA'}), (c:Company {ticker: 'NVDA'}) "
+        "MERGE (i)-[:REPRESENTS]->(c)"
+    ),
+    (
+        "MATCH (i:Instrument {ticker: 'AMD'}), (c:Company {ticker: 'AMD'}) "
+        "MERGE (i)-[:REPRESENTS]->(c)"
+    ),
+    (
+        "MATCH (i:Instrument {ticker: 'ASML'}), (c:Company {ticker: 'ASML'}) "
+        "MERGE (i)-[:REPRESENTS]->(c)"
+    ),
+    (
+        "MATCH (i:Instrument {ticker: 'INTC'}), (c:Company {ticker: 'INTC'}) "
+        "MERGE (i)-[:REPRESENTS]->(c)"
+    ),
     (
         "MATCH (smh:Instrument {ticker: 'SMH'}), (nvda:Company {ticker: 'NVDA'}) "
         "MERGE (smh)-[:HOLDS]->(nvda)"
@@ -59,6 +86,12 @@ REFERENCE_GRAPH_QUERIES = [
         "MERGE (asml)-[:SUPPLIES]->(tsmc)"
     ),
 ]
+
+REFERENCE_GRAPH_QUERIES = DEMO_REFERENCE_GRAPH_QUERIES
+
+
+def demo_reference_graph_statements() -> list[tuple[str, dict[str, Any] | None]]:
+    return [(query, None) for query in DEMO_REFERENCE_GRAPH_QUERIES]
 
 
 def graph_event_query() -> str:
@@ -138,3 +171,13 @@ def graph_event_params(event_candidate, research_bundle) -> dict:
         "research_confidence": research_bundle.research_confidence,
         "research_notes": research_bundle.research_notes,
     }
+
+
+def graph_ingest_statements(
+    event_candidate, research_bundle
+) -> list[tuple[str, dict[str, Any] | None]]:
+    params = graph_event_params(event_candidate, research_bundle)
+    return [
+        (graph_cleanup_query(), params),
+        (graph_event_query(), params),
+    ]

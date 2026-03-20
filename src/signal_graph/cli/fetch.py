@@ -6,17 +6,16 @@ import typer
 
 from signal_graph.config import DEFAULT_PROJECT_DIR
 from signal_graph.connectors.base import BaseConnector
-from signal_graph.connectors.premium_stub import PremiumStubConnector
 from signal_graph.connectors.public_web import PublicWebConnector
 from signal_graph.services.raw_items import persist_raw_items
 from signal_graph.storage.sqlite import SqliteStore
+
+_PREMIUM_FETCH_UNAVAILABLE_MESSAGE = "premium fetch is not implemented in this build."
 
 
 def _get_connector(source: str) -> BaseConnector:
     if source == "web":
         return PublicWebConnector()
-    if source == "premium":
-        return PremiumStubConnector()
     raise typer.BadParameter(f"unsupported source: {source}")
 
 
@@ -24,6 +23,10 @@ def fetch(
     source: str = typer.Option(..., "--source"),
     query: str = typer.Option(..., "--query"),
 ) -> None:
+    if source == "premium":
+        typer.echo(_PREMIUM_FETCH_UNAVAILABLE_MESSAGE)
+        raise typer.Exit(code=1)
+
     connector = _get_connector(source)
     raw_items = connector.fetch(query=query)
     store = SqliteStore(DEFAULT_PROJECT_DIR / "signal_graph.db")

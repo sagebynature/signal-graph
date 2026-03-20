@@ -6,7 +6,7 @@ def test_makefile_has_minimal_task_targets():
     assert Path("Makefile").exists()
 
     for target, expected in (
-        ("test", "uv run pytest"),
+        ("test", "uv run python -m pytest"),
         ("typecheck", "uv run ty check"),
         ("doctor", "uv run signal-graph doctor"),
         (

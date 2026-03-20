@@ -24,5 +24,22 @@ class GraphClient:
                 for record in session.run(cast(LiteralString, query), params or {})
             ]
 
+    def run_in_transaction(
+        self, statements: list[tuple[str, dict[str, Any] | None]]
+    ) -> list[list[dict]]:
+        with self._driver.session(database=self.database) as session:
+
+            def work(tx: Any) -> list[list[dict]]:
+                results: list[list[dict]] = []
+                for query, params in statements:
+                    rows = [
+                        record.data()
+                        for record in tx.run(cast(LiteralString, query), params or {})
+                    ]
+                    results.append(rows)
+                return results
+
+            return session.execute_write(work)
+
     def close(self) -> None:
         self._driver.close()

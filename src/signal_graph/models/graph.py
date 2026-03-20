@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -8,6 +9,7 @@ from pydantic import BaseModel, Field
 class GraphEvent(BaseModel):
     graph_event_id: str
     event_candidate_id: str
+    research_bundle_id: str | None = None
     committed_at: datetime | None = None
     trust_score: float = 0.0
     eligible_modes: list[str] = Field(default_factory=list)
@@ -15,7 +17,9 @@ class GraphEvent(BaseModel):
 
 
 class RankedCandidate(BaseModel):
+    instrument_id: str
     ticker: str
+    asset_kind: Literal["equity", "etf"]
     fast_reaction_score: float
     follow_through_score: float
     timing_window: str = "short_drift"

@@ -7,6 +7,8 @@ from pathlib import Path
 from typer.testing import CliRunner
 
 from signal_graph.cli.main import app
+from signal_graph.models.research import ResearchBundle
+from signal_graph.storage.sqlite import SqliteStore
 
 
 def _write_bundle_file(path: Path) -> Path:
@@ -24,6 +26,27 @@ def _write_bundle_file(path: Path) -> Path:
         )
     )
     return bundle_path
+
+
+def test_research_requires_initialized_project(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+
+    runner = CliRunner()
+    result = runner.invoke(app, ["research", "--event-candidate", "ec-123"])
+
+    assert result.exit_code == 1
+    assert result.stdout.strip() == (
+        "Project is not initialized. Run `signal-graph init` first."
+    )
+
+
+def test_research_help_describes_event_candidate_identifier():
+    runner = CliRunner()
+
+    result = runner.invoke(app, ["research", "--help"])
+
+    assert result.exit_code == 0
+    assert "Event candidate id to attach research to." in result.stdout
 
 
 def test_research_creates_bundle_from_bundle_file(tmp_path, monkeypatch):
@@ -110,6 +133,85 @@ def test_research_persists_bundle_fields_for_event_candidate(tmp_path, monkeypat
     )
 
 
+def test_research_preserves_multiple_revisions_for_same_event_candidate(
+    tmp_path, monkeypatch
+):
+    monkeypatch.chdir(tmp_path)
+
+    runner = CliRunner()
+    runner.invoke(app, ["init"])
+    submit = runner.invoke(app, ["submit", "--text", "NVDA supplier disruption"])
+    raw_item_id = json.loads(submit.stdout)["raw_item_id"]
+    normalized = runner.invoke(app, ["normalize", "--raw-item", raw_item_id])
+    event_candidate_id = json.loads(normalized.stdout)["event_candidate_id"]
+    first_bundle_path = _write_bundle_file(tmp_path)
+    second_bundle_path = tmp_path / "bundle-revision-2.json"
+    second_bundle_path.write_text(
+        json.dumps(
+            {
+                "supporting_documents": ["https://example.com/tsmc-capex-revision-2"],
+                "contradictions": ["Supplier commentary softened the demand outlook."],
+                "entity_resolution_results": {"TSMC": "company:TSMC"},
+                "evidence_spans": ["Management revised the supplier forecast."],
+                "research_confidence": 0.8,
+                "research_notes": "Revision two keeps the earlier evidence but updates the conclusion.",
+            }
+        )
+    )
+
+    first_result = runner.invoke(
+        app,
+        [
+            "research",
+            "--event-candidate",
+            event_candidate_id,
+            "--bundle-file",
+            str(first_bundle_path),
+        ],
+    )
+    second_result = runner.invoke(
+        app,
+        [
+            "research",
+            "--event-candidate",
+            event_candidate_id,
+            "--bundle-file",
+            str(second_bundle_path),
+        ],
+    )
+
+    assert first_result.exit_code == 0
+    assert second_result.exit_code == 0
+
+    first_bundle = json.loads(first_result.stdout)
+    second_bundle = json.loads(second_result.stdout)
+    assert first_bundle["research_bundle_id"] == f"rb-{event_candidate_id}"
+    assert first_bundle["research_bundle_id"] != second_bundle["research_bundle_id"]
+    assert second_bundle["research_bundle_id"] == f"rb-{event_candidate_id}-r0002"
+
+    with sqlite3.connect(Path(".signal-graph/signal_graph.db")) as connection:
+        rows = connection.execute(
+            """
+            SELECT research_bundle_id, research_notes
+            FROM research_bundles
+            WHERE event_candidate_id = ?
+            ORDER BY bundle_revision
+            """,
+            (event_candidate_id,),
+        ).fetchall()
+
+    assert rows == [
+        (
+            first_bundle["research_bundle_id"],
+            "Capex cuts often pressure semiconductor equipment demand.",
+        ),
+        (
+            second_bundle["research_bundle_id"],
+            "Revision two keeps the earlier evidence but updates the conclusion.",
+        ),
+    ]
+
+
 def test_research_rejects_empty_bundle_without_allow_empty(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
 
@@ -172,3 +274,99 @@ def test_research_allows_empty_bundle_when_explicitly_requested(tmp_path, monkey
         research_bundle["research_bundle_id"],
         event_candidate_id,
     )
+
+
+def test_research_retries_when_revision_insert_conflicts(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+
+    runner = CliRunner()
+    runner.invoke(app, ["init"])
+    submit = runner.invoke(app, ["submit", "--text", "NVDA supplier disruption"])
+    raw_item_id = json.loads(submit.stdout)["raw_item_id"]
+    normalized = runner.invoke(app, ["normalize", "--raw-item", raw_item_id])
+    event_candidate_id = json.loads(normalized.stdout)["event_candidate_id"]
+    first_bundle_path = _write_bundle_file(tmp_path)
+    second_bundle_path = tmp_path / "bundle-revision-race.json"
+    second_bundle_path.write_text(
+        json.dumps(
+            {
+                "supporting_documents": ["https://example.com/revision-race"],
+                "contradictions": [],
+                "entity_resolution_results": {"NVDA": "company:NVDA"},
+                "evidence_spans": ["Supplier guidance was updated again."],
+                "research_confidence": 0.9,
+                "research_notes": "Retry should advance to the next revision.",
+            }
+        )
+    )
+
+    first_result = runner.invoke(
+        app,
+        [
+            "research",
+            "--event-candidate",
+            event_candidate_id,
+            "--bundle-file",
+            str(first_bundle_path),
+        ],
+    )
+    assert first_result.exit_code == 0
+
+    original_save_research_bundle = SqliteStore.save_research_bundle
+    raced = False
+
+    def racing_save_research_bundle(self: SqliteStore, bundle: ResearchBundle):
+        nonlocal raced
+        if not raced:
+            raced = True
+            original_save_research_bundle(
+                self,
+                ResearchBundle(
+                    research_bundle_id=f"rb-{event_candidate_id}-r0002",
+                    event_candidate_id=event_candidate_id,
+                    bundle_revision=2,
+                    supporting_documents=["https://example.com/conflict"],
+                ),
+            )
+            raise sqlite3.IntegrityError(
+                "UNIQUE constraint failed: research_bundles.event_candidate_id, research_bundles.bundle_revision"
+            )
+        return original_save_research_bundle(self, bundle)
+
+    monkeypatch.setattr(
+        SqliteStore,
+        "save_research_bundle",
+        racing_save_research_bundle,
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "research",
+            "--event-candidate",
+            event_candidate_id,
+            "--bundle-file",
+            str(second_bundle_path),
+        ],
+    )
+
+    assert result.exit_code == 0
+    research_bundle = json.loads(result.stdout)
+    assert research_bundle["research_bundle_id"] == f"rb-{event_candidate_id}-r0003"
+
+    with sqlite3.connect(Path(".signal-graph/signal_graph.db")) as connection:
+        rows = connection.execute(
+            """
+            SELECT research_bundle_id, bundle_revision
+            FROM research_bundles
+            WHERE event_candidate_id = ?
+            ORDER BY bundle_revision
+            """,
+            (event_candidate_id,),
+        ).fetchall()
+
+    assert rows == [
+        (f"rb-{event_candidate_id}", 1),
+        (f"rb-{event_candidate_id}-r0002", 2),
+        (f"rb-{event_candidate_id}-r0003", 3),
+    ]

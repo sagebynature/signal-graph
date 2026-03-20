@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import json
 import sqlite3
 
+from signal_graph.models.events import EventCandidate
+from signal_graph.models.research import ResearchBundle
 from signal_graph.storage.sqlite import SqliteStore
 
 
@@ -12,6 +15,7 @@ def test_init_db_creates_canonical_pipeline_tables(tmp_path):
 
     assert store.table_exists("raw_source_items")
     assert store.table_exists("event_candidates")
+    assert store.table_exists("event_candidate_source_items")
     assert store.table_exists("research_bundles")
     assert store.table_exists("graph_events")
 
@@ -31,3 +35,598 @@ def test_init_db_adds_foreign_keys_for_related_event_tables(tmp_path):
 
     assert any(row[2] == "event_candidates" for row in research_bundle_foreign_keys)
     assert any(row[2] == "event_candidates" for row in graph_event_foreign_keys)
+
+
+def test_init_db_adds_provenance_columns_for_event_and_research_tables(tmp_path):
+    store = SqliteStore(tmp_path / "signal_graph.db")
+
+    store.init_db()
+
+    with sqlite3.connect(tmp_path / "signal_graph.db") as connection:
+        event_candidate_columns = {
+            row[1] for row in connection.execute("PRAGMA table_info(event_candidates)")
+        }
+        research_bundle_columns = {
+            row[1] for row in connection.execute("PRAGMA table_info(research_bundles)")
+        }
+
+    assert {"dedupe_fingerprint", "created_at"} <= event_candidate_columns
+    assert {"bundle_revision", "created_at"} <= research_bundle_columns
+
+
+def test_get_research_bundle_returns_latest_revision_for_event_candidate(tmp_path):
+    store = SqliteStore(tmp_path / "signal_graph.db")
+    store.init_db()
+    event_candidate = EventCandidate(
+        event_candidate_id="evt-123",
+        title="NVDA supplier disruption",
+        event_type="supplier_disruption",
+        direction="negative",
+        primary_entities=["NVDA"],
+        dedupe_fingerprint="fp-123",
+        source_item_ids=["raw-1"],
+    )
+    first_bundle = ResearchBundle(
+        research_bundle_id="rb-evt-123",
+        event_candidate_id=event_candidate.event_candidate_id,
+        bundle_revision=1,
+        supporting_documents=["https://example.com/1"],
+        research_notes="first revision",
+    )
+    second_bundle = ResearchBundle(
+        research_bundle_id="rb-evt-123-r0002",
+        event_candidate_id=event_candidate.event_candidate_id,
+        bundle_revision=2,
+        supporting_documents=["https://example.com/2"],
+        research_notes="second revision",
+    )
+
+    store.insert_event_candidate(event_candidate)
+    store.save_research_bundle(first_bundle)
+    store.save_research_bundle(second_bundle)
+
+    latest_bundle = store.get_research_bundle(event_candidate.event_candidate_id)
+
+    assert latest_bundle is not None
+    assert latest_bundle.research_bundle_id == second_bundle.research_bundle_id
+    assert latest_bundle.supporting_documents == ["https://example.com/2"]
+    assert latest_bundle.research_notes == "second revision"
+
+
+def test_init_db_preserves_existing_rows_while_adding_provenance_columns(tmp_path):
+    database_path = tmp_path / "signal_graph.db"
+    with sqlite3.connect(database_path) as connection:
+        connection.executescript(
+            """
+            CREATE TABLE raw_source_items (
+                raw_item_id TEXT PRIMARY KEY,
+                source_tier TEXT NOT NULL,
+                source_name TEXT NOT NULL,
+                source_url TEXT,
+                fetched_at TEXT,
+                published_at TEXT,
+                raw_text TEXT NOT NULL,
+                raw_payload TEXT
+            );
+
+            CREATE TABLE event_candidates (
+                event_candidate_id TEXT PRIMARY KEY,
+                title TEXT NOT NULL,
+                event_type TEXT NOT NULL,
+                direction TEXT NOT NULL,
+                primary_entities TEXT NOT NULL,
+                secondary_entities TEXT NOT NULL,
+                source_item_ids TEXT NOT NULL,
+                candidate_confidence REAL NOT NULL,
+                candidate_status TEXT NOT NULL
+            );
+
+            CREATE TABLE research_bundles (
+                research_bundle_id TEXT PRIMARY KEY,
+                event_candidate_id TEXT NOT NULL REFERENCES event_candidates(event_candidate_id) ON DELETE CASCADE,
+                supporting_documents TEXT NOT NULL,
+                contradictions TEXT NOT NULL,
+                entity_resolution_results TEXT,
+                evidence_spans TEXT,
+                research_confidence REAL NOT NULL,
+                research_notes TEXT
+            );
+
+            INSERT INTO event_candidates (
+                event_candidate_id,
+                title,
+                event_type,
+                direction,
+                primary_entities,
+                secondary_entities,
+                source_item_ids,
+                candidate_confidence,
+                candidate_status
+            ) VALUES (
+                'evt-legacy',
+                'Legacy event title',
+                'unknown',
+                'unknown',
+                '["NVDA"]',
+                '[]',
+                '["raw-1"]',
+                0.0,
+                'pending'
+            );
+
+            INSERT INTO research_bundles (
+                research_bundle_id,
+                event_candidate_id,
+                supporting_documents,
+                contradictions,
+                entity_resolution_results,
+                evidence_spans,
+                research_confidence,
+                research_notes
+            ) VALUES (
+                'rb-legacy',
+                'evt-legacy',
+                '["https://example.com/legacy"]',
+                '[]',
+                NULL,
+                '[]',
+                0.3,
+                'legacy row'
+            );
+            """
+        )
+
+    store = SqliteStore(database_path)
+    store.init_db()
+
+    with sqlite3.connect(database_path) as connection:
+        event_row = connection.execute(
+            """
+            SELECT dedupe_fingerprint, created_at
+            FROM event_candidates
+            WHERE event_candidate_id = 'evt-legacy'
+            """
+        ).fetchone()
+        research_row = connection.execute(
+            """
+            SELECT bundle_revision, created_at
+            FROM research_bundles
+            WHERE research_bundle_id = 'rb-legacy'
+            """
+        ).fetchone()
+
+    assert event_row is not None
+    assert event_row[0]
+    assert event_row[1] is None
+    assert research_row == (1, None)
+
+
+def test_init_db_backfills_raw_item_event_lookup_rows_for_existing_candidates(tmp_path):
+    database_path = tmp_path / "signal_graph.db"
+    with sqlite3.connect(database_path) as connection:
+        connection.executescript(
+            """
+            CREATE TABLE raw_source_items (
+                raw_item_id TEXT PRIMARY KEY,
+                source_tier TEXT NOT NULL,
+                source_name TEXT NOT NULL,
+                source_url TEXT,
+                fetched_at TEXT,
+                published_at TEXT,
+                raw_text TEXT NOT NULL,
+                raw_payload TEXT
+            );
+
+            CREATE TABLE event_candidates (
+                event_candidate_id TEXT PRIMARY KEY,
+                title TEXT NOT NULL,
+                event_type TEXT NOT NULL,
+                direction TEXT NOT NULL,
+                primary_entities TEXT NOT NULL,
+                secondary_entities TEXT NOT NULL,
+                source_item_ids TEXT NOT NULL,
+                candidate_confidence REAL NOT NULL,
+                candidate_status TEXT NOT NULL
+            );
+
+            INSERT INTO raw_source_items (
+                raw_item_id,
+                source_tier,
+                source_name,
+                raw_text
+            ) VALUES
+                ('raw-1', 'manual', 'test', 'NVDA supplier disruption'),
+                ('raw-2', 'manual', 'test', 'NVDA supplier disruption');
+
+            INSERT INTO event_candidates (
+                event_candidate_id,
+                title,
+                event_type,
+                direction,
+                primary_entities,
+                secondary_entities,
+                source_item_ids,
+                candidate_confidence,
+                candidate_status
+            ) VALUES (
+                'evt-legacy',
+                'NVDA supplier disruption',
+                'unknown',
+                'unknown',
+                '[]',
+                '[]',
+                '["raw-1", "raw-2"]',
+                0.0,
+                'pending'
+            );
+            """
+        )
+
+    store = SqliteStore(database_path)
+    store.init_db()
+
+    with sqlite3.connect(database_path) as connection:
+        rows = connection.execute(
+            """
+            SELECT raw_item_id, event_candidate_id
+            FROM event_candidate_source_items
+            ORDER BY raw_item_id
+            """
+        ).fetchall()
+
+    assert rows == [("raw-1", "evt-legacy"), ("raw-2", "evt-legacy")]
+
+
+def test_init_db_does_not_rescan_backfilled_legacy_rows_with_null_created_at(
+    tmp_path,
+):
+    database_path = tmp_path / "signal_graph.db"
+    with sqlite3.connect(database_path) as connection:
+        connection.executescript(
+            """
+            CREATE TABLE raw_source_items (
+                raw_item_id TEXT PRIMARY KEY,
+                source_tier TEXT NOT NULL,
+                source_name TEXT NOT NULL,
+                source_url TEXT,
+                fetched_at TEXT,
+                published_at TEXT,
+                raw_text TEXT NOT NULL,
+                raw_payload TEXT
+            );
+
+            CREATE TABLE event_candidates (
+                event_candidate_id TEXT PRIMARY KEY,
+                title TEXT NOT NULL,
+                event_type TEXT NOT NULL,
+                direction TEXT NOT NULL,
+                primary_entities TEXT NOT NULL,
+                dedupe_fingerprint TEXT,
+                secondary_entities TEXT NOT NULL,
+                source_item_ids TEXT NOT NULL,
+                candidate_confidence REAL NOT NULL,
+                candidate_status TEXT NOT NULL,
+                created_at TEXT
+            );
+
+            CREATE TABLE event_candidate_update_log (
+                event_candidate_id TEXT NOT NULL
+            );
+
+            CREATE TRIGGER event_candidates_update_audit
+            AFTER UPDATE ON event_candidates
+            BEGIN
+                INSERT INTO event_candidate_update_log (event_candidate_id)
+                VALUES (NEW.event_candidate_id);
+            END;
+
+            INSERT INTO event_candidates (
+                event_candidate_id,
+                title,
+                event_type,
+                direction,
+                primary_entities,
+                dedupe_fingerprint,
+                secondary_entities,
+                source_item_ids,
+                candidate_confidence,
+                candidate_status,
+                created_at
+            ) VALUES (
+                'evt-backfilled',
+                'Legacy event title',
+                'unknown',
+                'unknown',
+                '[]',
+                'already-backfilled',
+                '[]',
+                '[]',
+                0.0,
+                'pending',
+                NULL
+            );
+            """
+        )
+
+    store = SqliteStore(database_path)
+
+    store.init_db()
+
+    with sqlite3.connect(database_path) as connection:
+        rows = connection.execute(
+            """
+            SELECT event_candidate_id
+            FROM event_candidate_update_log
+            """
+        ).fetchall()
+
+    assert rows == []
+
+
+def test_split_legacy_event_candidate_for_raw_item_rolls_back_on_failure(tmp_path):
+    store = SqliteStore(tmp_path / "signal_graph.db")
+    store.init_db()
+    with sqlite3.connect(tmp_path / "signal_graph.db") as connection:
+        connection.executescript(
+            """
+            INSERT INTO raw_source_items (
+                raw_item_id,
+                source_tier,
+                source_name,
+                raw_text
+            ) VALUES
+                ('raw-1', 'manual', 'test', 'NVDA supplier disruption'),
+                ('raw-2', 'manual', 'test', 'NVDA supplier disruption');
+            """
+        )
+    legacy_event_candidate = EventCandidate(
+        event_candidate_id="evt-legacy",
+        title="NVDA supplier disruption",
+        event_type="unknown",
+        direction="unknown",
+        primary_entities=[],
+        dedupe_fingerprint="fp-legacy",
+        source_item_ids=["raw-1", "raw-2"],
+    )
+    colliding_event_candidate = EventCandidate(
+        event_candidate_id="evt-legacy",
+        title="NVDA supplier disruption",
+        event_type="supplier_disruption",
+        direction="negative",
+        primary_entities=["NVDA"],
+        dedupe_fingerprint="fp-legacy",
+        secondary_entities=["SMH"],
+        source_item_ids=["raw-2"],
+    )
+
+    store.insert_event_candidate(legacy_event_candidate)
+
+    try:
+        store.split_legacy_event_candidate_for_raw_item(
+            legacy_event_candidate,
+            colliding_event_candidate,
+            raw_item_id="raw-2",
+        )
+    except sqlite3.IntegrityError:
+        pass
+    else:
+        raise AssertionError("expected split to fail")
+
+    with sqlite3.connect(tmp_path / "signal_graph.db") as connection:
+        candidate_rows = connection.execute(
+            """
+            SELECT event_candidate_id, source_item_ids
+            FROM event_candidates
+            ORDER BY event_candidate_id
+            """
+        ).fetchall()
+        lookup_rows = connection.execute(
+            """
+            SELECT raw_item_id, event_candidate_id
+            FROM event_candidate_source_items
+            ORDER BY raw_item_id
+            """
+        ).fetchall()
+
+    assert candidate_rows == [("evt-legacy", json.dumps(["raw-1", "raw-2"]))]
+    assert lookup_rows == [("raw-1", "evt-legacy"), ("raw-2", "evt-legacy")]
+
+
+def test_init_db_backfill_chooses_deterministic_winner_for_duplicate_legacy_ownership(
+    tmp_path,
+):
+    database_path = tmp_path / "signal_graph.db"
+    with sqlite3.connect(database_path) as connection:
+        connection.executescript(
+            """
+            CREATE TABLE raw_source_items (
+                raw_item_id TEXT PRIMARY KEY,
+                source_tier TEXT NOT NULL,
+                source_name TEXT NOT NULL,
+                source_url TEXT,
+                fetched_at TEXT,
+                published_at TEXT,
+                raw_text TEXT NOT NULL,
+                raw_payload TEXT
+            );
+
+            CREATE TABLE event_candidates (
+                event_candidate_id TEXT PRIMARY KEY,
+                title TEXT NOT NULL,
+                event_type TEXT NOT NULL,
+                direction TEXT NOT NULL,
+                primary_entities TEXT NOT NULL,
+                dedupe_fingerprint TEXT,
+                secondary_entities TEXT NOT NULL,
+                source_item_ids TEXT NOT NULL,
+                candidate_confidence REAL NOT NULL,
+                candidate_status TEXT NOT NULL,
+                created_at TEXT
+            );
+
+            INSERT INTO raw_source_items (
+                raw_item_id,
+                source_tier,
+                source_name,
+                raw_text
+            ) VALUES ('raw-dup', 'manual', 'test', 'NVDA supplier disruption');
+
+            INSERT INTO event_candidates (
+                event_candidate_id,
+                title,
+                event_type,
+                direction,
+                primary_entities,
+                dedupe_fingerprint,
+                secondary_entities,
+                source_item_ids,
+                candidate_confidence,
+                candidate_status,
+                created_at
+            ) VALUES
+                (
+                    'evt-b',
+                    'NVDA supplier disruption',
+                    'unknown',
+                    'unknown',
+                    '[]',
+                    'fp-b',
+                    '[]',
+                    '["raw-dup"]',
+                    0.0,
+                    'pending',
+                    '2026-01-02T00:00:00+00:00'
+                ),
+                (
+                    'evt-a',
+                    'NVDA supplier disruption',
+                    'unknown',
+                    'unknown',
+                    '[]',
+                    'fp-a',
+                    '[]',
+                    '["raw-dup"]',
+                    0.0,
+                    'pending',
+                    '2026-01-01T00:00:00+00:00'
+                );
+            """
+        )
+
+    store = SqliteStore(database_path)
+    store.init_db()
+
+    with sqlite3.connect(database_path) as connection:
+        row = connection.execute(
+            """
+            SELECT raw_item_id, event_candidate_id
+            FROM event_candidate_source_items
+            WHERE raw_item_id = 'raw-dup'
+            """
+        ).fetchone()
+
+    assert row == ("raw-dup", "evt-a")
+
+
+def test_init_db_rebuilds_stale_raw_item_lookup_rows_from_canonical_event_candidates(
+    tmp_path,
+):
+    database_path = tmp_path / "signal_graph.db"
+    with sqlite3.connect(database_path) as connection:
+        connection.executescript(
+            """
+            CREATE TABLE raw_source_items (
+                raw_item_id TEXT PRIMARY KEY,
+                source_tier TEXT NOT NULL,
+                source_name TEXT NOT NULL,
+                source_url TEXT,
+                fetched_at TEXT,
+                published_at TEXT,
+                raw_text TEXT NOT NULL,
+                raw_payload TEXT
+            );
+
+            CREATE TABLE event_candidates (
+                event_candidate_id TEXT PRIMARY KEY,
+                title TEXT NOT NULL,
+                event_type TEXT NOT NULL,
+                direction TEXT NOT NULL,
+                primary_entities TEXT NOT NULL,
+                dedupe_fingerprint TEXT,
+                secondary_entities TEXT NOT NULL,
+                source_item_ids TEXT NOT NULL,
+                candidate_confidence REAL NOT NULL,
+                candidate_status TEXT NOT NULL,
+                created_at TEXT
+            );
+
+            CREATE TABLE event_candidate_source_items (
+                raw_item_id TEXT PRIMARY KEY REFERENCES raw_source_items(raw_item_id) ON DELETE CASCADE,
+                event_candidate_id TEXT NOT NULL REFERENCES event_candidates(event_candidate_id) ON DELETE CASCADE
+            );
+
+            INSERT INTO raw_source_items (
+                raw_item_id,
+                source_tier,
+                source_name,
+                raw_text
+            ) VALUES ('raw-1', 'manual', 'test', 'NVDA supplier disruption');
+
+            INSERT INTO event_candidates (
+                event_candidate_id,
+                title,
+                event_type,
+                direction,
+                primary_entities,
+                dedupe_fingerprint,
+                secondary_entities,
+                source_item_ids,
+                candidate_confidence,
+                candidate_status,
+                created_at
+            ) VALUES
+                (
+                    'evt-canonical',
+                    'NVDA supplier disruption',
+                    'unknown',
+                    'unknown',
+                    '[]',
+                    'fp-canonical',
+                    '[]',
+                    '["raw-1"]',
+                    0.0,
+                    'pending',
+                    '2026-01-01T00:00:00+00:00'
+                ),
+                (
+                    'evt-stale',
+                    'Different event',
+                    'unknown',
+                    'unknown',
+                    '[]',
+                    'fp-stale',
+                    '[]',
+                    '[]',
+                    0.0,
+                    'pending',
+                    '2026-01-02T00:00:00+00:00'
+                );
+
+            INSERT INTO event_candidate_source_items (raw_item_id, event_candidate_id)
+            VALUES ('raw-1', 'evt-stale');
+            """
+        )
+
+    store = SqliteStore(database_path)
+    store.init_db()
+
+    with sqlite3.connect(database_path) as connection:
+        row = connection.execute(
+            """
+            SELECT raw_item_id, event_candidate_id
+            FROM event_candidate_source_items
+            WHERE raw_item_id = 'raw-1'
+            """
+        ).fetchone()
+
+    assert row == ("raw-1", "evt-canonical")

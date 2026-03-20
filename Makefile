@@ -1,7 +1,7 @@
 .PHONY: test typecheck doctor install-hooks neo4j-up neo4j-down
 
 test: typecheck
-	uv run pytest
+	uv run python -m pytest
 
 typecheck:
 	uv run ty check

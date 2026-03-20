@@ -4,12 +4,17 @@ from pathlib import Path
 
 from signal_graph.config import DEFAULT_PROJECT_DIR
 from signal_graph.models.graph import MemoResponse
-from signal_graph.services.rank import rank_event
-from signal_graph.services.scoring_policy import get_scoring_policy
+from signal_graph.services.rank import (
+    rank_event,
+    _resolve_research_bundle,
+    _resolve_scoring_policy,
+)
 from signal_graph.storage.sqlite import SqliteStore
 
 
-def explain_candidate(graph_event_id: str, ticker: str) -> str:
+def explain_candidate(
+    graph_event_id: str, ticker: str, *, ranked_candidates=None
+) -> str:
     store = SqliteStore(DEFAULT_PROJECT_DIR / "signal_graph.db")
     graph_event = store.get_graph_event(graph_event_id)
     if graph_event is None:
@@ -19,9 +24,7 @@ def explain_candidate(graph_event_id: str, ticker: str) -> str:
     if event_candidate is None:
         raise ValueError(f"event candidate not found: {graph_event.event_candidate_id}")
 
-    research_bundle = store.get_research_bundle(graph_event.event_candidate_id)
-    if research_bundle is None:
-        raise ValueError(f"research bundle not found: {graph_event.event_candidate_id}")
+    research_bundle = _resolve_research_bundle(store, graph_event)
 
     source_items = [
         store.get_raw_source_item(raw_item_id)
@@ -35,7 +38,9 @@ def explain_candidate(graph_event_id: str, ticker: str) -> str:
         else "none recorded"
     )
 
-    ranked_candidates = rank_event(graph_event_id)
+    ranked_candidates = (
+        rank_event(graph_event_id) if ranked_candidates is None else ranked_candidates
+    )
     ranked_candidate = next(
         (candidate for candidate in ranked_candidates if candidate.ticker == ticker),
         None,
@@ -43,7 +48,7 @@ def explain_candidate(graph_event_id: str, ticker: str) -> str:
     if ranked_candidate is None:
         raise ValueError(f"ranked candidate not found: {ticker}")
 
-    resolved_policy = get_scoring_policy().resolve(
+    resolved_policy = _resolve_scoring_policy(research_bundle).resolve(
         ranked_candidate.relationship_path,
         event_type=event_candidate.event_type,
         direction=event_candidate.direction,
@@ -84,8 +89,10 @@ def explain_candidate(graph_event_id: str, ticker: str) -> str:
 def write_memo_artifact(
     artifact_dir: Path, graph_event_id: str, ticker: str
 ) -> MemoResponse:
-    memo_text = explain_candidate(graph_event_id, ticker)
     ranked_candidates = rank_event(graph_event_id)
+    memo_text = explain_candidate(
+        graph_event_id, ticker, ranked_candidates=ranked_candidates
+    )
     artifact_dir.mkdir(parents=True, exist_ok=True)
     artifact_path = artifact_dir / f"{graph_event_id}-{ticker}.md"
     artifact_path.write_text(memo_text)

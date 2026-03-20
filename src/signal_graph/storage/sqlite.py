@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 from datetime import datetime
+from hashlib import sha256
 import json
 import sqlite3
 from pathlib import Path
 
 from signal_graph.models.events import EventCandidate
 from signal_graph.models.graph import GraphEvent
+from signal_graph.models.policy import ScoringPolicy
 from signal_graph.models.research import ResearchBundle
 from signal_graph.models.source import RawSourceItem
 
@@ -25,6 +27,7 @@ class SqliteStore:
         with self._connect() as connection:
             schema_sql = Path(__file__).with_name("schema.sql").read_text()
             connection.executescript(schema_sql)
+            self._apply_additive_migrations(connection)
 
     def table_exists(self, name: str) -> bool:
         with self._connect() as connection:
@@ -98,32 +101,17 @@ class SqliteStore:
 
     def insert_event_candidate(self, event_candidate: EventCandidate) -> None:
         with self._connect() as connection:
-            connection.execute(
-                """
-                INSERT OR REPLACE INTO event_candidates (
-                    event_candidate_id,
-                    title,
-                    event_type,
-                    direction,
-                    primary_entities,
-                    secondary_entities,
-                    source_item_ids,
-                    candidate_confidence,
-                    candidate_status
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    event_candidate.event_candidate_id,
-                    event_candidate.title,
-                    event_candidate.event_type,
-                    event_candidate.direction,
-                    json.dumps(event_candidate.primary_entities),
-                    json.dumps(event_candidate.secondary_entities),
-                    json.dumps(event_candidate.source_item_ids),
-                    event_candidate.candidate_confidence,
-                    event_candidate.candidate_status,
-                ),
-            )
+            self._insert_event_candidate(connection, event_candidate)
+
+    def update_event_candidate(self, event_candidate: EventCandidate) -> None:
+        with self._connect() as connection:
+            self._update_event_candidate(connection, event_candidate)
+
+    def get_event_candidate_for_raw_item(
+        self, raw_item_id: str
+    ) -> EventCandidate | None:
+        with self._connect() as connection:
+            return self._get_event_candidate_for_raw_item(connection, raw_item_id)
 
     def get_event_candidate(self, event_candidate_id: str) -> EventCandidate | None:
         with self._connect() as connection:
@@ -135,49 +123,103 @@ class SqliteStore:
                     event_type,
                     direction,
                     primary_entities,
+                    dedupe_fingerprint,
                     secondary_entities,
                     source_item_ids,
                     candidate_confidence,
-                    candidate_status
+                    candidate_status,
+                    created_at
                 FROM event_candidates
                 WHERE event_candidate_id = ?
                 """,
                 (event_candidate_id,),
             ).fetchone()
 
-        if row is None:
-            return None
+        return self._hydrate_event_candidate(row)
 
-        return EventCandidate(
-            event_candidate_id=row[0],
-            title=row[1],
-            event_type=row[2],
-            direction=row[3],
-            primary_entities=json.loads(row[4]),
-            secondary_entities=json.loads(row[5]),
-            source_item_ids=json.loads(row[6]),
-            candidate_confidence=row[7],
-            candidate_status=row[8],
-        )
+    def event_candidate_has_downstream_artifacts(self, event_candidate_id: str) -> bool:
+        with self._connect() as connection:
+            return self._event_candidate_has_downstream_artifacts(
+                connection, event_candidate_id
+            )
+
+    def split_legacy_event_candidate_for_raw_item(
+        self,
+        existing_event_candidate: EventCandidate,
+        new_event_candidate: EventCandidate,
+        *,
+        raw_item_id: str,
+    ) -> EventCandidate:
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            current_event_candidate = self._get_event_candidate_for_raw_item(
+                connection, raw_item_id
+            )
+            if current_event_candidate is None:
+                raise ValueError(f"raw item mapping not found: {raw_item_id}")
+            if (
+                current_event_candidate.event_candidate_id
+                != existing_event_candidate.event_candidate_id
+            ):
+                return current_event_candidate
+            if len(current_event_candidate.source_item_ids) <= 1:
+                return current_event_candidate
+            if self._event_candidate_has_downstream_artifacts(
+                connection, current_event_candidate.event_candidate_id
+            ):
+                raise ValueError(
+                    "processed legacy candidates cannot be auto-split because research bundles or graph events already exist"
+                )
+
+            peeled_source_item_ids = [
+                source_item_id
+                for source_item_id in current_event_candidate.source_item_ids
+                if source_item_id != raw_item_id
+            ]
+            self._update_event_candidate(
+                connection,
+                EventCandidate(
+                    event_candidate_id=current_event_candidate.event_candidate_id,
+                    title=current_event_candidate.title,
+                    event_type=current_event_candidate.event_type,
+                    direction=current_event_candidate.direction,
+                    primary_entities=current_event_candidate.primary_entities,
+                    dedupe_fingerprint=current_event_candidate.dedupe_fingerprint,
+                    secondary_entities=current_event_candidate.secondary_entities,
+                    source_item_ids=peeled_source_item_ids,
+                    candidate_confidence=current_event_candidate.candidate_confidence,
+                    candidate_status=current_event_candidate.candidate_status,
+                    created_at=current_event_candidate.created_at,
+                ),
+            )
+            self._insert_event_candidate(connection, new_event_candidate)
+            return new_event_candidate
 
     def save_research_bundle(self, bundle: ResearchBundle) -> None:
         with self._connect() as connection:
             connection.execute(
                 """
-                INSERT OR REPLACE INTO research_bundles (
+                INSERT INTO research_bundles (
                     research_bundle_id,
                     event_candidate_id,
+                    bundle_revision,
+                    scoring_policy_snapshot,
                     supporting_documents,
                     contradictions,
                     entity_resolution_results,
                     evidence_spans,
                     research_confidence,
-                    research_notes
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    research_notes,
+                    created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     bundle.research_bundle_id,
                     bundle.event_candidate_id,
+                    bundle.bundle_revision,
+                    json.dumps(bundle.scoring_policy_snapshot.model_dump(mode="json"))
+                    if bundle.scoring_policy_snapshot is not None
+                    else None,
                     json.dumps(bundle.supporting_documents),
                     json.dumps(bundle.contradictions),
                     json.dumps(bundle.entity_resolution_results)
@@ -186,24 +228,37 @@ class SqliteStore:
                     json.dumps(bundle.evidence_spans),
                     bundle.research_confidence,
                     bundle.research_notes,
+                    bundle.created_at.isoformat()
+                    if bundle.created_at is not None
+                    else None,
                 ),
             )
 
     def get_research_bundle(self, event_candidate_id: str) -> ResearchBundle | None:
+        return self.get_latest_research_bundle(event_candidate_id)
+
+    def get_latest_research_bundle(
+        self, event_candidate_id: str
+    ) -> ResearchBundle | None:
         with self._connect() as connection:
             row = connection.execute(
                 """
                 SELECT
                     research_bundle_id,
                     event_candidate_id,
+                    bundle_revision,
+                    scoring_policy_snapshot,
                     supporting_documents,
                     contradictions,
                     entity_resolution_results,
                     evidence_spans,
                     research_confidence,
-                    research_notes
+                    research_notes,
+                    created_at
                 FROM research_bundles
                 WHERE event_candidate_id = ?
+                ORDER BY bundle_revision DESC, created_at DESC, rowid DESC
+                LIMIT 1
                 """,
                 (event_candidate_id,),
             ).fetchone()
@@ -214,30 +269,99 @@ class SqliteStore:
         return ResearchBundle(
             research_bundle_id=row[0],
             event_candidate_id=row[1],
-            supporting_documents=json.loads(row[2]),
-            contradictions=json.loads(row[3]),
-            entity_resolution_results=json.loads(row[4]) if row[4] else None,
-            evidence_spans=json.loads(row[5]),
-            research_confidence=row[6],
-            research_notes=row[7],
+            bundle_revision=row[2] or 1,
+            scoring_policy_snapshot=(
+                ScoringPolicy.model_validate(json.loads(row[3])) if row[3] else None
+            ),
+            supporting_documents=json.loads(row[4]),
+            contradictions=json.loads(row[5]),
+            entity_resolution_results=json.loads(row[6]) if row[6] else None,
+            evidence_spans=json.loads(row[7]),
+            research_confidence=row[8],
+            research_notes=row[9],
+            created_at=datetime.fromisoformat(row[10]) if row[10] else None,
+        )
+
+    def next_research_bundle_revision(self, event_candidate_id: str) -> int:
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT COALESCE(MAX(bundle_revision), 0) + 1
+                FROM research_bundles
+                WHERE event_candidate_id = ?
+                """,
+                (event_candidate_id,),
+            ).fetchone()
+
+        return int(row[0]) if row is not None else 1
+
+    def get_research_bundle_by_id(
+        self, research_bundle_id: str
+    ) -> ResearchBundle | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT
+                    research_bundle_id,
+                    event_candidate_id,
+                    bundle_revision,
+                    scoring_policy_snapshot,
+                    supporting_documents,
+                    contradictions,
+                    entity_resolution_results,
+                    evidence_spans,
+                    research_confidence,
+                    research_notes,
+                    created_at
+                FROM research_bundles
+                WHERE research_bundle_id = ?
+                """,
+                (research_bundle_id,),
+            ).fetchone()
+
+        if row is None:
+            return None
+
+        return ResearchBundle(
+            research_bundle_id=row[0],
+            event_candidate_id=row[1],
+            bundle_revision=row[2] or 1,
+            scoring_policy_snapshot=(
+                ScoringPolicy.model_validate(json.loads(row[3])) if row[3] else None
+            ),
+            supporting_documents=json.loads(row[4]),
+            contradictions=json.loads(row[5]),
+            entity_resolution_results=json.loads(row[6]) if row[6] else None,
+            evidence_spans=json.loads(row[7]),
+            research_confidence=row[8],
+            research_notes=row[9],
+            created_at=datetime.fromisoformat(row[10]) if row[10] else None,
         )
 
     def save_graph_event(self, graph_event: GraphEvent) -> None:
+        research_bundle_id = graph_event.research_bundle_id
+        if research_bundle_id is None:
+            raise ValueError(
+                f"graph event missing bound research bundle: {graph_event.graph_event_id}"
+            )
+
         with self._connect() as connection:
             connection.execute(
                 """
                 INSERT OR REPLACE INTO graph_events (
                     graph_event_id,
                     event_candidate_id,
+                    research_bundle_id,
                     committed_at,
                     trust_score,
                     eligible_modes,
                     ingest_decision
-                ) VALUES (?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     graph_event.graph_event_id,
                     graph_event.event_candidate_id,
+                    research_bundle_id,
                     graph_event.committed_at.isoformat()
                     if graph_event.committed_at is not None
                     else "",
@@ -254,6 +378,7 @@ class SqliteStore:
                 SELECT
                     graph_event_id,
                     event_candidate_id,
+                    research_bundle_id,
                     committed_at,
                     trust_score,
                     eligible_modes,
@@ -270,8 +395,343 @@ class SqliteStore:
         return GraphEvent(
             graph_event_id=row[0],
             event_candidate_id=row[1],
-            committed_at=datetime.fromisoformat(row[2]) if row[2] else None,
-            trust_score=row[3],
-            eligible_modes=json.loads(row[4]),
-            ingest_decision=row[5],
+            research_bundle_id=row[2],
+            committed_at=datetime.fromisoformat(row[3]) if row[3] else None,
+            trust_score=row[4],
+            eligible_modes=json.loads(row[5]),
+            ingest_decision=row[6],
+        )
+
+    def _apply_additive_migrations(self, connection: sqlite3.Connection) -> None:
+        self._ensure_column(connection, "event_candidates", "dedupe_fingerprint TEXT")
+        self._ensure_column(connection, "event_candidates", "created_at TEXT")
+        self._ensure_column(connection, "research_bundles", "bundle_revision INTEGER")
+        self._ensure_column(
+            connection, "research_bundles", "scoring_policy_snapshot TEXT"
+        )
+        self._ensure_column(connection, "research_bundles", "created_at TEXT")
+        self._ensure_column(connection, "graph_events", "research_bundle_id TEXT")
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS event_candidate_source_items (
+                raw_item_id TEXT PRIMARY KEY REFERENCES raw_source_items(raw_item_id) ON DELETE CASCADE,
+                event_candidate_id TEXT NOT NULL REFERENCES event_candidates(event_candidate_id) ON DELETE CASCADE
+            )
+            """
+        )
+        connection.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_event_candidates_dedupe_fingerprint
+                ON event_candidates(dedupe_fingerprint)
+            """
+        )
+        connection.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_event_candidate_source_items_event_candidate_id
+                ON event_candidate_source_items(event_candidate_id)
+            """
+        )
+        connection.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_research_bundles_event_candidate_revision
+                ON research_bundles(event_candidate_id, bundle_revision DESC, created_at DESC)
+            """
+        )
+        connection.execute(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_research_bundles_event_candidate_revision_unique
+                ON research_bundles(event_candidate_id, bundle_revision)
+            """
+        )
+        self._backfill_event_candidate_provenance(connection)
+        self._backfill_event_candidate_source_item_lookup(connection)
+        self._backfill_research_bundle_provenance(connection)
+        self._backfill_graph_event_research_bundle_lookup(connection)
+
+    def _ensure_column(
+        self, connection: sqlite3.Connection, table_name: str, column_definition: str
+    ) -> None:
+        column_name = column_definition.split()[0]
+        existing_columns = {
+            row[1] for row in connection.execute(f"PRAGMA table_info({table_name})")
+        }
+        if column_name in existing_columns:
+            return
+
+        connection.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_definition}")
+
+    def _backfill_event_candidate_provenance(
+        self, connection: sqlite3.Connection
+    ) -> None:
+        rows = connection.execute(
+            """
+            SELECT event_candidate_id, title
+            FROM event_candidates
+            WHERE dedupe_fingerprint IS NULL
+            """
+        ).fetchall()
+        for event_candidate_id, title in rows:
+            normalized_title = (title or "").strip().lower()
+            connection.execute(
+                """
+                UPDATE event_candidates
+                SET dedupe_fingerprint = COALESCE(dedupe_fingerprint, ?)
+                WHERE event_candidate_id = ?
+                """,
+                (
+                    sha256(normalized_title.encode()).hexdigest(),
+                    event_candidate_id,
+                ),
+            )
+
+    def _backfill_event_candidate_source_item_lookup(
+        self, connection: sqlite3.Connection
+    ) -> None:
+        connection.execute("DELETE FROM event_candidate_source_items")
+        rows = connection.execute(
+            """
+            SELECT event_candidate_id, source_item_ids
+            FROM event_candidates
+            ORDER BY
+                CASE WHEN created_at IS NULL THEN 1 ELSE 0 END,
+                created_at,
+                event_candidate_id
+            """
+        ).fetchall()
+        for event_candidate_id, source_item_ids in rows:
+            for raw_item_id in json.loads(source_item_ids):
+                if not self._raw_source_item_exists(connection, raw_item_id):
+                    continue
+                connection.execute(
+                    """
+                    INSERT OR IGNORE INTO event_candidate_source_items (
+                        raw_item_id,
+                        event_candidate_id
+                    ) VALUES (?, ?)
+                    """,
+                    (raw_item_id, event_candidate_id),
+                )
+
+    def _backfill_research_bundle_provenance(
+        self, connection: sqlite3.Connection
+    ) -> None:
+        connection.execute(
+            """
+            UPDATE research_bundles
+            SET bundle_revision = (
+                SELECT COUNT(*)
+                FROM research_bundles AS prior_revisions
+                WHERE prior_revisions.event_candidate_id = research_bundles.event_candidate_id
+                  AND prior_revisions.rowid <= research_bundles.rowid
+            )
+            WHERE bundle_revision IS NULL
+            """
+        )
+
+    def _backfill_graph_event_research_bundle_lookup(
+        self, connection: sqlite3.Connection
+    ) -> None:
+        connection.execute(
+            """
+            UPDATE graph_events
+            SET research_bundle_id = (
+                SELECT research_bundle_id
+                FROM research_bundles
+                WHERE research_bundles.event_candidate_id = graph_events.event_candidate_id
+                ORDER BY bundle_revision DESC, created_at DESC, rowid DESC
+                LIMIT 1
+            )
+            WHERE research_bundle_id IS NULL
+            """
+        )
+
+    def _set_event_candidate_source_items(
+        self,
+        connection: sqlite3.Connection,
+        event_candidate_id: str,
+        source_item_ids: list[str],
+    ) -> None:
+        connection.execute(
+            """
+            DELETE FROM event_candidate_source_items
+            WHERE event_candidate_id = ?
+            """,
+            (event_candidate_id,),
+        )
+        for raw_item_id in source_item_ids:
+            if not self._raw_source_item_exists(connection, raw_item_id):
+                continue
+            connection.execute(
+                """
+                INSERT INTO event_candidate_source_items (
+                    raw_item_id,
+                    event_candidate_id
+                ) VALUES (?, ?)
+                ON CONFLICT(raw_item_id) DO UPDATE
+                SET event_candidate_id = excluded.event_candidate_id
+                """,
+                (raw_item_id, event_candidate_id),
+            )
+
+    def _raw_source_item_exists(
+        self, connection: sqlite3.Connection, raw_item_id: str
+    ) -> bool:
+        row = connection.execute(
+            """
+            SELECT 1
+            FROM raw_source_items
+            WHERE raw_item_id = ?
+            """,
+            (raw_item_id,),
+        ).fetchone()
+        return row is not None
+
+    def _get_event_candidate_for_raw_item(
+        self, connection: sqlite3.Connection, raw_item_id: str
+    ) -> EventCandidate | None:
+        row = connection.execute(
+            """
+            SELECT
+                ec.event_candidate_id,
+                ec.title,
+                ec.event_type,
+                ec.direction,
+                ec.primary_entities,
+                ec.dedupe_fingerprint,
+                ec.secondary_entities,
+                ec.source_item_ids,
+                ec.candidate_confidence,
+                ec.candidate_status,
+                ec.created_at
+            FROM event_candidate_source_items AS ecsi
+            JOIN event_candidates AS ec
+                ON ec.event_candidate_id = ecsi.event_candidate_id
+            WHERE ecsi.raw_item_id = ?
+            """,
+            (raw_item_id,),
+        ).fetchone()
+        return self._hydrate_event_candidate(row)
+
+    def _insert_event_candidate(
+        self, connection: sqlite3.Connection, event_candidate: EventCandidate
+    ) -> None:
+        connection.execute(
+            """
+            INSERT INTO event_candidates (
+                event_candidate_id,
+                title,
+                event_type,
+                direction,
+                primary_entities,
+                dedupe_fingerprint,
+                secondary_entities,
+                source_item_ids,
+                candidate_confidence,
+                candidate_status,
+                created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                event_candidate.event_candidate_id,
+                event_candidate.title,
+                event_candidate.event_type,
+                event_candidate.direction,
+                json.dumps(event_candidate.primary_entities),
+                event_candidate.dedupe_fingerprint,
+                json.dumps(event_candidate.secondary_entities),
+                json.dumps(event_candidate.source_item_ids),
+                event_candidate.candidate_confidence,
+                event_candidate.candidate_status,
+                event_candidate.created_at.isoformat()
+                if event_candidate.created_at is not None
+                else None,
+            ),
+        )
+        self._set_event_candidate_source_items(
+            connection,
+            event_candidate.event_candidate_id,
+            event_candidate.source_item_ids,
+        )
+
+    def _update_event_candidate(
+        self, connection: sqlite3.Connection, event_candidate: EventCandidate
+    ) -> None:
+        connection.execute(
+            """
+            UPDATE event_candidates
+            SET title = ?,
+                event_type = ?,
+                direction = ?,
+                primary_entities = ?,
+                dedupe_fingerprint = ?,
+                secondary_entities = ?,
+                source_item_ids = ?,
+                candidate_confidence = ?,
+                candidate_status = ?,
+                created_at = ?
+            WHERE event_candidate_id = ?
+            """,
+            (
+                event_candidate.title,
+                event_candidate.event_type,
+                event_candidate.direction,
+                json.dumps(event_candidate.primary_entities),
+                event_candidate.dedupe_fingerprint,
+                json.dumps(event_candidate.secondary_entities),
+                json.dumps(event_candidate.source_item_ids),
+                event_candidate.candidate_confidence,
+                event_candidate.candidate_status,
+                event_candidate.created_at.isoformat()
+                if event_candidate.created_at is not None
+                else None,
+                event_candidate.event_candidate_id,
+            ),
+        )
+        self._set_event_candidate_source_items(
+            connection,
+            event_candidate.event_candidate_id,
+            event_candidate.source_item_ids,
+        )
+
+    def _event_candidate_has_downstream_artifacts(
+        self, connection: sqlite3.Connection, event_candidate_id: str
+    ) -> bool:
+        research_bundle_row = connection.execute(
+            """
+            SELECT 1
+            FROM research_bundles
+            WHERE event_candidate_id = ?
+            LIMIT 1
+            """,
+            (event_candidate_id,),
+        ).fetchone()
+        graph_event_row = connection.execute(
+            """
+            SELECT 1
+            FROM graph_events
+            WHERE event_candidate_id = ?
+            LIMIT 1
+            """,
+            (event_candidate_id,),
+        ).fetchone()
+        return research_bundle_row is not None or graph_event_row is not None
+
+    def _hydrate_event_candidate(
+        self, row: sqlite3.Row | tuple | None
+    ) -> EventCandidate | None:
+        if row is None:
+            return None
+
+        return EventCandidate(
+            event_candidate_id=row[0],
+            title=row[1],
+            event_type=row[2],
+            direction=row[3],
+            primary_entities=json.loads(row[4]),
+            dedupe_fingerprint=row[5],
+            secondary_entities=json.loads(row[6]),
+            source_item_ids=json.loads(row[7]),
+            candidate_confidence=row[8],
+            candidate_status=row[9],
+            created_at=datetime.fromisoformat(row[10]) if row[10] else None,
         )
