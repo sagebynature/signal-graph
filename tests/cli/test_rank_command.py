@@ -7,6 +7,8 @@ from typer.testing import CliRunner
 
 from signal_graph.cli.main import app
 from signal_graph.config import DEFAULT_PROJECT_DIR
+from signal_graph.models.research import ResearchBundleInput
+from signal_graph.services.research import build_and_persist_research_bundle
 from signal_graph.storage.sqlite import SqliteStore
 
 
@@ -577,35 +579,33 @@ def test_rank_uses_ingested_research_bundle_revision_for_existing_graph_event(
     assert first_bundle is not None
     assert first_bundle.bundle_revision == 1
 
+    original_save_graph_event = SqliteStore.save_graph_event
+
+    def save_graph_event_after_new_revision(self, graph_event):
+        build_and_persist_research_bundle(
+            self,
+            graph_event.event_candidate_id,
+            bundle_input=ResearchBundleInput(
+                supporting_documents=["https://example.com/export-control-r2"],
+                contradictions=["A new caveat was added after ingest."],
+                evidence_spans=["Revision 2 evidence should not be rebound."],
+                research_confidence=0.2,
+                research_notes="Revision 2 research snapshot.",
+            ),
+        )
+        return original_save_graph_event(self, graph_event)
+
+    monkeypatch.setattr(
+        "signal_graph.storage.sqlite.SqliteStore.save_graph_event",
+        save_graph_event_after_new_revision,
+    )
+
     ingested = runner.invoke(app, ["ingest", "--event-candidate", event_candidate_id])
     graph_event_id = json.loads(ingested.stdout)["graph_event_id"]
 
     graph_event = store.get_graph_event(graph_event_id)
     assert graph_event is not None
     assert graph_event.research_bundle_id == first_bundle.research_bundle_id
-
-    _write_scoring_policy_config(
-        tmp_path,
-        description="revision-2 ETF spillover",
-        rationale="Revision 2 rationale should not leak into the existing graph event.",
-        base_score=0.12,
-    )
-    runner.invoke(
-        app,
-        [
-            "research",
-            "--event-candidate",
-            event_candidate_id,
-            "--bundle-file",
-            _write_bundle_file(
-                tmp_path,
-                supporting_documents=["https://example.com/export-control-r2"],
-                contradictions=["A new caveat was added after ingest."],
-                research_confidence=0.2,
-                research_notes="Revision 2 research snapshot.",
-            ),
-        ],
-    )
 
     latest_bundle = store.get_latest_research_bundle(event_candidate_id)
     assert latest_bundle is not None

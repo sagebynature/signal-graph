@@ -46,6 +46,7 @@ def _ingest_event_candidate(store: SqliteStore, event_candidate_id: str) -> Grap
     graph_event = GraphEvent(
         graph_event_id=f"ge-{event_candidate.event_candidate_id}",
         event_candidate_id=event_candidate.event_candidate_id,
+        research_bundle_id=bundle.research_bundle_id,
         committed_at=datetime.now(UTC),
         ingest_decision="committed",
     )

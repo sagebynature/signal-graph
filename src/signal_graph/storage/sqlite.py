@@ -341,12 +341,9 @@ class SqliteStore:
     def save_graph_event(self, graph_event: GraphEvent) -> None:
         research_bundle_id = graph_event.research_bundle_id
         if research_bundle_id is None:
-            bundle = self.get_latest_research_bundle(graph_event.event_candidate_id)
-            if bundle is None:
-                raise ValueError(
-                    f"research bundle not found: {graph_event.event_candidate_id}"
-                )
-            research_bundle_id = bundle.research_bundle_id
+            raise ValueError(
+                f"graph event missing bound research bundle: {graph_event.graph_event_id}"
+            )
 
         with self._connect() as connection:
             connection.execute(
