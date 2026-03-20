@@ -201,3 +201,63 @@ def test_normalize_is_idempotent_for_same_raw_item_id(tmp_path, monkeypatch):
             json.dumps([raw_item_id]),
         )
     ]
+
+
+def test_normalize_rerun_for_same_raw_item_upgrades_metadata(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+
+    runner = CliRunner()
+    runner.invoke(app, ["init"])
+    submit = runner.invoke(app, ["submit", "--text", "NVDA supplier disruption"])
+    raw_item_id = json.loads(submit.stdout)["raw_item_id"]
+
+    first_normalize = runner.invoke(app, ["normalize", "--raw-item", raw_item_id])
+    second_normalize = runner.invoke(
+        app,
+        [
+            "normalize",
+            "--raw-item",
+            raw_item_id,
+            "--event-type",
+            "supplier_disruption",
+            "--direction",
+            "negative",
+            "--primary-entity",
+            "NVDA",
+            "--secondary-entity",
+            "SMH",
+        ],
+    )
+
+    assert first_normalize.exit_code == 0
+    assert second_normalize.exit_code == 0
+
+    first_event_candidate = json.loads(first_normalize.stdout)
+    second_event_candidate = json.loads(second_normalize.stdout)
+    assert (
+        first_event_candidate["event_candidate_id"]
+        == second_event_candidate["event_candidate_id"]
+    )
+    assert second_event_candidate["event_type"] == "supplier_disruption"
+    assert second_event_candidate["direction"] == "negative"
+    assert second_event_candidate["primary_entities"] == ["NVDA"]
+    assert second_event_candidate["secondary_entities"] == ["SMH"]
+    assert second_event_candidate["source_item_ids"] == [raw_item_id]
+
+    with sqlite3.connect(Path(".signal-graph/signal_graph.db")) as connection:
+        row = connection.execute(
+            """
+            SELECT event_candidate_id, event_type, direction, primary_entities, secondary_entities
+            FROM event_candidates
+            WHERE event_candidate_id = ?
+            """,
+            (first_event_candidate["event_candidate_id"],),
+        ).fetchone()
+
+    assert row == (
+        first_event_candidate["event_candidate_id"],
+        "supplier_disruption",
+        "negative",
+        json.dumps(["NVDA"]),
+        json.dumps(["SMH"]),
+    )

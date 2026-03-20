@@ -133,6 +133,40 @@ class SqliteStore:
                 ),
             )
 
+    def update_event_candidate(self, event_candidate: EventCandidate) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                """
+                UPDATE event_candidates
+                SET title = ?,
+                    event_type = ?,
+                    direction = ?,
+                    primary_entities = ?,
+                    dedupe_fingerprint = ?,
+                    secondary_entities = ?,
+                    source_item_ids = ?,
+                    candidate_confidence = ?,
+                    candidate_status = ?,
+                    created_at = ?
+                WHERE event_candidate_id = ?
+                """,
+                (
+                    event_candidate.title,
+                    event_candidate.event_type,
+                    event_candidate.direction,
+                    json.dumps(event_candidate.primary_entities),
+                    event_candidate.dedupe_fingerprint,
+                    json.dumps(event_candidate.secondary_entities),
+                    json.dumps(event_candidate.source_item_ids),
+                    event_candidate.candidate_confidence,
+                    event_candidate.candidate_status,
+                    event_candidate.created_at.isoformat()
+                    if event_candidate.created_at is not None
+                    else None,
+                    event_candidate.event_candidate_id,
+                ),
+            )
+
     def get_event_candidate_for_raw_item(
         self, raw_item_id: str
     ) -> EventCandidate | None:
