@@ -72,3 +72,13 @@ def test_get_neo4j_config_rejects_empty_config_credentials(tmp_path, monkeypatch
         ValueError, match="Neo4j username and password must be non-empty"
     ):
         get_neo4j_config()
+
+
+def test_get_neo4j_config_allows_partial_split_env_override(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("NEO4J_USERNAME", "graph-user")
+
+    resolved = get_neo4j_config()
+
+    assert resolved["username"] == "graph-user"
+    assert resolved["password"] == "password"

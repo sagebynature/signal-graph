@@ -58,17 +58,35 @@ def validate_neo4j_credentials(username: str, password: str) -> tuple[str, str]:
     return username, password
 
 
-def get_explicit_neo4j_auth() -> tuple[str, str] | None:
+def resolve_neo4j_credentials(
+    neo4j_config: dict[str, Any] | None = None,
+) -> tuple[str, str]:
+    resolved_config = neo4j_config or {}
+
     if "NEO4J_AUTH" in os.environ:
-        return parse_neo4j_auth(os.environ.get("NEO4J_AUTH"))
+        auth = parse_neo4j_auth(os.environ.get("NEO4J_AUTH"))
+        if auth is not None:
+            return auth
 
-    if "NEO4J_USERNAME" in os.environ or "NEO4J_PASSWORD" in os.environ:
-        return validate_neo4j_credentials(
-            os.environ.get("NEO4J_USERNAME", ""),
-            os.environ.get("NEO4J_PASSWORD", ""),
-        )
+    username = os.getenv(
+        "NEO4J_USERNAME", str(resolved_config.get("username", "neo4j"))
+    )
+    password = os.getenv(
+        "NEO4J_PASSWORD", str(resolved_config.get("password", "password"))
+    )
 
-    return None
+    return validate_neo4j_credentials(username, password)
+
+
+def get_explicit_neo4j_auth() -> tuple[str, str] | None:
+    if (
+        "NEO4J_AUTH" not in os.environ
+        and "NEO4J_USERNAME" not in os.environ
+        and "NEO4J_PASSWORD" not in os.environ
+    ):
+        return None
+
+    return resolve_neo4j_credentials({})
 
 
 def get_neo4j_config() -> dict[str, str]:
@@ -77,17 +95,7 @@ def get_neo4j_config() -> dict[str, str]:
         config.get("neo4j", {}) if isinstance(config.get("neo4j"), dict) else {}
     )
 
-    auth = parse_neo4j_auth(os.getenv("NEO4J_AUTH"))
-    if auth is not None:
-        username, password = auth
-    else:
-        username = os.getenv(
-            "NEO4J_USERNAME", str(neo4j_config.get("username", "neo4j"))
-        )
-        password = os.getenv(
-            "NEO4J_PASSWORD", str(neo4j_config.get("password", "password"))
-        )
-        username, password = validate_neo4j_credentials(username, password)
+    username, password = resolve_neo4j_credentials(neo4j_config)
 
     return {
         "uri": os.getenv(

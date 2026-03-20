@@ -147,6 +147,22 @@ def test_doctor_fails_when_split_neo4j_env_credentials_are_empty(monkeypatch, tm
     assert "username and password must be non-empty" in result.stdout.lower()
 
 
+def test_doctor_allows_partial_split_neo4j_env_override(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("NEO4J_USERNAME", "graph-user")
+    monkeypatch.setattr(shutil, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(
+        "signal_graph.cli.doctor.subprocess.run",
+        lambda *args, **kwargs: SimpleNamespace(returncode=0),
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(app, ["doctor"])
+
+    assert result.exit_code == 0
+    assert "neo4j auth: ok" in result.stdout.lower()
+
+
 def test_doctor_fails_when_config_neo4j_credentials_are_empty(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
     config_dir = tmp_path / ".signal-graph"
