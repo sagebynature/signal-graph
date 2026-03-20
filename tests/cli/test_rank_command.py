@@ -16,7 +16,9 @@ def test_rank_returns_candidates_with_scores(tmp_path, monkeypatch):
     raw_item_id = json.loads(submit.stdout)["raw_item_id"]
     normalized = runner.invoke(app, ["normalize", "--raw-item", raw_item_id])
     event_candidate_id = json.loads(normalized.stdout)["event_candidate_id"]
-    runner.invoke(app, ["research", "--event-candidate", event_candidate_id])
+    runner.invoke(
+        app, ["research", "--event-candidate", event_candidate_id, "--allow-empty"]
+    )
     ingested = runner.invoke(app, ["ingest", "--event-candidate", event_candidate_id])
     graph_event_id = json.loads(ingested.stdout)["graph_event_id"]
 

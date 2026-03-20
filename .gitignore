@@ -10,3 +10,5 @@ infra/neo4j/logs/*
 !infra/neo4j/logs/.gitkeep
 infra/neo4j/plugins/*
 !infra/neo4j/plugins/.gitkeep
+
+pytest*

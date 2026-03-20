@@ -15,7 +15,9 @@ def explain_candidate(graph_event_id: str, ticker: str) -> str:
     )
 
 
-def write_memo_artifact(artifact_dir: Path, graph_event_id: str, ticker: str) -> MemoResponse:
+def write_memo_artifact(
+    artifact_dir: Path, graph_event_id: str, ticker: str
+) -> MemoResponse:
     memo_text = explain_candidate(graph_event_id, ticker)
     artifact_dir.mkdir(parents=True, exist_ok=True)
     artifact_path = artifact_dir / f"{graph_event_id}-{ticker}.md"

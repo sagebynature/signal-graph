@@ -19,3 +19,12 @@ def persist_raw_item(store: SqliteStore, raw_item: RawSourceItem) -> RawSourceIt
     store.init_db()
     store.insert_raw_source_item(raw_item)
     return raw_item
+
+
+def persist_raw_items(
+    store: SqliteStore, raw_items: list[RawSourceItem]
+) -> list[RawSourceItem]:
+    store.init_db()
+    for raw_item in raw_items:
+        store.insert_raw_source_item(raw_item)
+    return raw_items

@@ -1,6 +1,6 @@
-.PHONY: test typecheck doctor neo4j-up neo4j-down
+.PHONY: test typecheck doctor install-hooks neo4j-up neo4j-down
 
-test:
+test: typecheck
 	uv run pytest
 
 typecheck:
@@ -8,6 +8,9 @@ typecheck:
 
 doctor:
 	uv run signal-graph doctor
+
+install-hooks:
+	uv run pre-commit install --install-hooks --hook-type pre-commit --hook-type commit-msg
 
 neo4j-up:
 	mkdir -p infra/neo4j/data infra/neo4j/logs infra/neo4j/plugins

@@ -17,12 +17,36 @@ def test_manual_event_flow(tmp_path, monkeypatch):
     raw_item_id = json.loads(submit.stdout)["raw_item_id"]
     normalized = runner.invoke(app, ["normalize", "--raw-item", raw_item_id])
     event_candidate_id = json.loads(normalized.stdout)["event_candidate_id"]
-    assert runner.invoke(app, ["research", "--event-candidate", event_candidate_id]).exit_code == 0
+    bundle_path = tmp_path / "bundle.json"
+    bundle_path.write_text(
+        json.dumps(
+            {
+                "supporting_documents": ["https://example.com/tsmc-capex"],
+                "evidence_spans": ["TSMC said it would reduce capital spending."],
+                "research_confidence": 0.7,
+            }
+        )
+    )
+    assert (
+        runner.invoke(
+            app,
+            [
+                "research",
+                "--event-candidate",
+                event_candidate_id,
+                "--bundle-file",
+                str(bundle_path),
+            ],
+        ).exit_code
+        == 0
+    )
     ingested = runner.invoke(app, ["ingest", "--event-candidate", event_candidate_id])
     graph_event_id = json.loads(ingested.stdout)["graph_event_id"]
     assert runner.invoke(app, ["rank", "--event", graph_event_id]).exit_code == 0
     assert (
-        runner.invoke(app, ["explain", "--event", graph_event_id, "--candidate", "SMH"]).exit_code
+        runner.invoke(
+            app, ["explain", "--event", graph_event_id, "--candidate", "SMH"]
+        ).exit_code
         == 0
     )
     assert Path(".signal-graph/artifacts").is_dir()

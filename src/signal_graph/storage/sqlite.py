@@ -37,7 +37,7 @@ class SqliteStore:
         with self._connect() as connection:
             connection.execute(
                 """
-                INSERT INTO raw_source_items (
+                INSERT OR REPLACE INTO raw_source_items (
                     raw_item_id,
                     source_tier,
                     source_name,
@@ -54,7 +54,9 @@ class SqliteStore:
                     raw_item.source_name,
                     raw_item.source_url,
                     raw_item.fetched_at.isoformat() if raw_item.fetched_at else None,
-                    raw_item.published_at.isoformat() if raw_item.published_at else None,
+                    raw_item.published_at.isoformat()
+                    if raw_item.published_at
+                    else None,
                     raw_item.raw_text,
                     raw_item.raw_payload,
                 ),

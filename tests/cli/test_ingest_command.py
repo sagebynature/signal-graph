@@ -18,7 +18,9 @@ def test_ingest_creates_graph_event_record(tmp_path, monkeypatch):
     raw_item_id = json.loads(submit.stdout)["raw_item_id"]
     normalized = runner.invoke(app, ["normalize", "--raw-item", raw_item_id])
     event_candidate_id = json.loads(normalized.stdout)["event_candidate_id"]
-    runner.invoke(app, ["research", "--event-candidate", event_candidate_id])
+    runner.invoke(
+        app, ["research", "--event-candidate", event_candidate_id, "--allow-empty"]
+    )
 
     result = runner.invoke(app, ["ingest", "--event-candidate", event_candidate_id])
 
@@ -35,7 +37,9 @@ def test_ingest_persists_graph_event_record(tmp_path, monkeypatch):
     raw_item_id = json.loads(submit.stdout)["raw_item_id"]
     normalized = runner.invoke(app, ["normalize", "--raw-item", raw_item_id])
     event_candidate_id = json.loads(normalized.stdout)["event_candidate_id"]
-    runner.invoke(app, ["research", "--event-candidate", event_candidate_id])
+    runner.invoke(
+        app, ["research", "--event-candidate", event_candidate_id, "--allow-empty"]
+    )
 
     result = runner.invoke(app, ["ingest", "--event-candidate", event_candidate_id])
 
