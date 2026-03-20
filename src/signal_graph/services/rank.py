@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal, cast
 
 from signal_graph.config import DEFAULT_PROJECT_DIR
 from signal_graph.graph.client import GraphClient
@@ -141,10 +141,15 @@ def _score_candidate(
         fast_reaction_score - 0.1 + (0.05 if path_length > 0 else 0.0)
     )
 
+    asset_kind = cast(
+        Literal["equity", "etf"],
+        str(row["asset_kind"]).lower(),
+    )
+
     return RankedCandidate(
         instrument_id=str(row["instrument_id"]),
         ticker=str(row["ticker"]),
-        asset_kind=str(row["asset_kind"]).lower(),
+        asset_kind=asset_kind,
         fast_reaction_score=fast_reaction_score,
         follow_through_score=follow_through_score,
         timing_window=resolved_policy.timing_window,
