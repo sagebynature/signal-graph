@@ -420,6 +420,7 @@ class SqliteStore:
     def _backfill_event_candidate_source_item_lookup(
         self, connection: sqlite3.Connection
     ) -> None:
+        connection.execute("DELETE FROM event_candidate_source_items")
         rows = connection.execute(
             """
             SELECT event_candidate_id, source_item_ids
