@@ -39,7 +39,7 @@ Operational notes:
 - `NEO4J_AUTH` must use the `username/password` format with non-empty values
 - if you change `NEO4J_AUTH`, you may need to clear `./infra/neo4j/data` or keep using the existing password
 - runtime config is loaded from `.signal-graph/config.toml` when present and can be overridden with `NEO4J_URI`, `NEO4J_AUTH`, `NEO4J_USERNAME`, `NEO4J_PASSWORD`, and `NEO4J_DATABASE`
-- malformed or unreadable config fails fast in `signal-graph doctor` and any command that loads runtime config
+- `signal-graph doctor` reports malformed or unreadable config explicitly; other commands that load runtime config currently raise an error when they encounter invalid config
 
 ## Scoring Policy Config
 
@@ -49,7 +49,7 @@ Scoring policy overrides live in `.signal-graph/config.toml` under `[scoring_pol
 2. local path overrides matched by `relationship_path`
 3. local event overrides matched by `event_type + direction + relationship_path`
 
-Malformed scoring policy config fails fast with a `ValueError`; it is not ignored.
+Malformed scoring policy config is not ignored. `signal-graph doctor` reports it explicitly, and commands that load config currently raise a `ValueError`.
 
 Reference example:
 

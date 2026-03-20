@@ -34,20 +34,27 @@ def get_scoring_policy_config() -> dict[str, Any] | None:
     return scoring_policy if isinstance(scoring_policy, dict) else None
 
 
+def parse_neo4j_auth(auth_value: str | None) -> tuple[str, str] | None:
+    if not auth_value:
+        return None
+
+    username, separator, password = auth_value.partition("/")
+    if separator != "/" or not username or not password:
+        message = "NEO4J_AUTH must use username/password format with non-empty values"
+        raise ValueError(message)
+
+    return username, password
+
+
 def get_neo4j_config() -> dict[str, str]:
     config = load_config() or {}
     neo4j_config = (
         config.get("neo4j", {}) if isinstance(config.get("neo4j"), dict) else {}
     )
 
-    auth_value = os.getenv("NEO4J_AUTH")
-    if auth_value:
-        username, separator, password = auth_value.partition("/")
-        if separator != "/" or not username or not password:
-            message = (
-                "NEO4J_AUTH must use username/password format with non-empty values"
-            )
-            raise ValueError(message)
+    auth = parse_neo4j_auth(os.getenv("NEO4J_AUTH"))
+    if auth is not None:
+        username, password = auth
     else:
         username = os.getenv(
             "NEO4J_USERNAME", str(neo4j_config.get("username", "neo4j"))

@@ -1,10 +1,16 @@
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 
 import typer
-from signal_graph.config import get_default_config_path, get_neo4j_config, load_config
+from signal_graph.config import (
+    get_default_config_path,
+    get_neo4j_config,
+    load_config,
+    parse_neo4j_auth,
+)
 
 
 def _docker_compose_available() -> bool:
@@ -29,6 +35,7 @@ def doctor() -> None:
     config_path = get_default_config_path()
     checks_ok = True
     config_valid = True
+    explicit_auth_valid = False
 
     try:
         if config_path.exists():
@@ -41,15 +48,23 @@ def doctor() -> None:
         checks_ok = False
         config_valid = False
 
-    if config_valid:
-        try:
-            get_neo4j_config()
-            _print_check("neo4j auth", "ok")
-        except ValueError as exc:
-            _print_check("neo4j auth", "error", str(exc))
-            checks_ok = False
+    try:
+        explicit_auth_valid = parse_neo4j_auth(os.getenv("NEO4J_AUTH")) is not None
+    except ValueError as exc:
+        _print_check("neo4j auth", "error", str(exc))
+        checks_ok = False
     else:
-        _print_check("neo4j auth", "skipped", "config invalid")
+        if config_valid:
+            try:
+                get_neo4j_config()
+                _print_check("neo4j auth", "ok")
+            except ValueError as exc:
+                _print_check("neo4j auth", "error", str(exc))
+                checks_ok = False
+        elif explicit_auth_valid:
+            _print_check("neo4j auth", "ok")
+        else:
+            _print_check("neo4j auth", "skipped", "config invalid")
 
     runtime_checks = {
         "docker": _docker_compose_available(),

@@ -109,7 +109,7 @@ Example `bundle.json`:
 
 ### Customizing Scoring Policy
 
-Scoring policy can be customized locally in `.signal-graph/config.toml`. The file is optional. When present, it must be valid TOML; malformed or unreadable config fails fast with a clear error instead of being silently ignored. The system keeps its built-in defaults, then merges local overrides by exact match:
+Scoring policy can be customized locally in `.signal-graph/config.toml`. The file is optional. When present, it must be valid TOML; malformed or unreadable config is not silently ignored. `signal-graph doctor` reports these config problems explicitly, and other commands that load config currently raise an error when they encounter them. The system keeps its built-in defaults, then merges local overrides by exact match:
 
 - path rule match key: `relationship_path`
 - event override match key: `event_type + direction + relationship_path`
