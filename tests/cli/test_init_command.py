@@ -16,3 +16,4 @@ def test_init_creates_local_directories(monkeypatch, tmp_path):
     assert result.exit_code == 0
     assert Path(".trade-graph/cache").is_dir()
     assert Path(".trade-graph/artifacts").is_dir()
+    assert Path(".trade-graph/trade_graph.db").is_file()
