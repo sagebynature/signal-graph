@@ -24,6 +24,12 @@ def load_config(path: Path | None = None) -> dict[str, Any] | None:
         return None
 
 
+def get_scoring_policy_config() -> dict[str, Any] | None:
+    config = load_config() or {}
+    scoring_policy = config.get("scoring_policy")
+    return scoring_policy if isinstance(scoring_policy, dict) else None
+
+
 def get_neo4j_config() -> dict[str, str]:
     config = load_config() or {}
     neo4j_config = (

@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from pydantic import ValidationError
+
+from signal_graph.config import get_scoring_policy_config
 from signal_graph.models.policy import (
     EventPolicy,
     EventPolicyOverride,
@@ -8,7 +11,7 @@ from signal_graph.models.policy import (
 )
 
 _DEFAULT_SCORING_POLICY = ScoringPolicy(
-    path_policies=[
+    paths=[
         PathPolicy(
             relationship_path=("DIRECT_ENTITY",),
             description="direct company exposure",
@@ -46,7 +49,7 @@ _DEFAULT_SCORING_POLICY = ScoringPolicy(
             timing_window="immediate",
         ),
     ],
-    event_policies=[
+    events=[
         EventPolicy(
             event_type="capex_cut",
             direction="negative",
@@ -130,5 +133,18 @@ _DEFAULT_SCORING_POLICY = ScoringPolicy(
 )
 
 
+def load_configured_scoring_policy() -> ScoringPolicy | None:
+    raw_config = get_scoring_policy_config()
+    if raw_config is None:
+        return None
+    try:
+        return ScoringPolicy.model_validate(raw_config)
+    except ValidationError as exc:
+        raise ValueError(f"invalid scoring_policy config: {exc}") from exc
+
+
 def get_scoring_policy() -> ScoringPolicy:
-    return _DEFAULT_SCORING_POLICY
+    configured_policy = load_configured_scoring_policy()
+    if configured_policy is None:
+        return _DEFAULT_SCORING_POLICY
+    return _DEFAULT_SCORING_POLICY.merged_with(configured_policy)

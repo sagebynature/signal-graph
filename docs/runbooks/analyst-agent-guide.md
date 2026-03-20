@@ -77,6 +77,23 @@ Use `--allow-empty` only when you deliberately want an empty provenance shell. N
 - Treat contradictions as part of the research record, not as noise to hide
 - Avoid presenting ranking output as trading advice; it is decision-support input
 
+## Local Policy Overrides
+
+Operators can change ranking and memo behavior through `.signal-graph/config.toml` under `[scoring_policy]`.
+
+What this can change:
+
+- rank order
+- timing windows
+- reason-summary wording
+- memo rationale text
+
+Coding agents should report when non-default local scoring policy is active, because the same event can rank differently across environments.
+
+Reference example:
+
+- `docs/examples/scoring-policy.example.toml`
+
 ## Expected Outputs
 
 - `submit` and `fetch` return persisted raw-source-item JSON with stable `raw_item_id` values

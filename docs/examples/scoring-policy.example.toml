@@ -1,0 +1,67 @@
+# Copy relevant sections into `.signal-graph/config.toml`.
+# Local scoring policy entries merge onto the built-in defaults by exact match.
+# Path-level entries match on `relationship_path`.
+# Event-level overrides match on `event_type + direction + relationship_path`.
+
+[scoring_policy]
+
+[[scoring_policy.paths]]
+relationship_path = ["DIRECT_ENTITY"]
+description = "direct company exposure"
+base_score = 0.70
+timing_window = "immediate"
+
+[[scoring_policy.paths]]
+relationship_path = ["HOLDS"]
+description = "ETF holding exposure"
+base_score = 0.50
+timing_window = "immediate"
+
+[[scoring_policy.paths]]
+relationship_path = ["SUPPLIES_TO_AFFECTED"]
+description = "upstream supplier exposure"
+base_score = 0.44
+timing_window = "short_drift"
+
+# Example 1: make a negative capex cut more punitive for upstream suppliers.
+[[scoring_policy.events]]
+event_type = "capex_cut"
+direction = "negative"
+fallback_rationale = "For a negative `capex_cut`, direct company and closely linked holdings are the default immediate read-through."
+
+[[scoring_policy.events.overrides]]
+relationship_path = ["SUPPLIES_TO_AFFECTED"]
+base_score = 0.62
+timing_window = "immediate"
+rationale = "For a negative `capex_cut`, upstream suppliers can react quickly because lower spending often hits equipment and input demand first."
+
+[[scoring_policy.events.overrides]]
+relationship_path = ["SUPPLIES_TO_CUSTOMER"]
+base_score = 0.34
+timing_window = "short_drift"
+rationale = "For a negative `capex_cut`, downstream customers are usually a second-order effect."
+
+# Example 2: add a new event policy without touching Python code.
+[[scoring_policy.events]]
+event_type = "export_control"
+direction = "negative"
+fallback_rationale = "For a negative `export_control`, the model emphasizes instruments that move with immediate market access risk."
+
+[[scoring_policy.events.overrides]]
+relationship_path = ["HOLDS"]
+base_score = 0.64
+timing_window = "immediate"
+rationale = "For a negative `export_control`, sector ETF exposure can move immediately."
+
+[[scoring_policy.events.overrides]]
+relationship_path = ["SUPPLIES_TO_CUSTOMER"]
+base_score = 0.28
+timing_window = "short_drift"
+rationale = "For a negative `export_control`, downstream customer spillover is slower and more conditional."
+
+# Example 3: change only the wording shown in reason summaries and memos.
+[[scoring_policy.paths]]
+relationship_path = ["HOLDS"]
+description = "policy-tuned ETF spillover"
+base_score = 0.50
+timing_window = "immediate"

@@ -37,6 +37,53 @@ Operational notes:
 - if you change `NEO4J_AUTH`, you may need to clear `./infra/neo4j/data` or keep using the existing password
 - runtime config is loaded from `.signal-graph/config.toml` when present and can be overridden with `NEO4J_URI`, `NEO4J_AUTH`, `NEO4J_USERNAME`, `NEO4J_PASSWORD`, and `NEO4J_DATABASE`
 
+## Scoring Policy Config
+
+Scoring policy overrides live in `.signal-graph/config.toml` under `[scoring_policy]`. The merge order is:
+
+1. built-in defaults from the repo
+2. local path overrides matched by `relationship_path`
+3. local event overrides matched by `event_type + direction + relationship_path`
+
+Malformed scoring policy config fails fast with a `ValueError`; it is not ignored.
+
+Reference example:
+
+- `docs/examples/scoring-policy.example.toml`
+
+Example: make negative `capex_cut` events more punitive for upstream suppliers.
+
+```toml
+[scoring_policy]
+
+[[scoring_policy.events]]
+event_type = "capex_cut"
+direction = "negative"
+
+[[scoring_policy.events.overrides]]
+relationship_path = ["SUPPLIES_TO_AFFECTED"]
+base_score = 0.62
+timing_window = "immediate"
+rationale = "For a negative `capex_cut`, upstream suppliers can react quickly because lower spending often hits equipment and input demand first."
+```
+
+Example: add a new `export_control` policy that boosts ETF spillover.
+
+```toml
+[scoring_policy]
+
+[[scoring_policy.events]]
+event_type = "export_control"
+direction = "negative"
+fallback_rationale = "For a negative `export_control`, the model emphasizes instruments that move with immediate market access risk."
+
+[[scoring_policy.events.overrides]]
+relationship_path = ["HOLDS"]
+base_score = 0.64
+timing_window = "immediate"
+rationale = "For a negative `export_control`, sector ETF exposure can move immediately."
+```
+
 ## Common Verification Commands
 
 ```bash
@@ -82,6 +129,7 @@ Expected behavior:
 - `ingest` seeds the small semiconductor graph and writes the event plus provenance into Neo4j
 - `rank` returns JSON candidates with `relationship_path` and `reason_summary`
 - `explain` writes a markdown memo under `.signal-graph/artifacts/`
+- local scoring policy config can change rank order, timing windows, path descriptions, and memo rationale without code edits
 
 ## Repository Responsibilities
 
@@ -98,4 +146,5 @@ Expected behavior:
 - Neo4j auth mismatch: either keep the existing password or reset the local data directory
 - Unexpected local state: inspect `.signal-graph/signal_graph.db` and `.signal-graph/artifacts/`
 - Rank output looks empty or weak: confirm your normalized event has `--primary-entity` data and that the entity exists in the seeded graph universe
+- Rank or memo behavior changed unexpectedly: inspect `.signal-graph/config.toml` and compare it with `docs/examples/scoring-policy.example.toml`
 - Smoke test drift: run `uv run pytest -v` first, then reproduce the failing CLI step manually

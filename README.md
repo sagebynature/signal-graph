@@ -104,6 +104,33 @@ Example `bundle.json`:
 
 `research` now expects either `--bundle-file` or an explicit `--allow-empty`. Empty placeholder bundles are no longer the default.
 
+### Customizing Scoring Policy
+
+Scoring policy can be customized locally in `.signal-graph/config.toml`. The system keeps its built-in defaults, then merges local overrides by exact match:
+
+- path rule match key: `relationship_path`
+- event override match key: `event_type + direction + relationship_path`
+- event fallback rationale match key: `event_type + direction`
+
+Example:
+
+```toml
+[scoring_policy]
+
+[[scoring_policy.events]]
+event_type = "export_control"
+direction = "negative"
+fallback_rationale = "For a negative `export_control`, the model emphasizes instruments that move with immediate market access risk."
+
+[[scoring_policy.events.overrides]]
+relationship_path = ["HOLDS"]
+base_score = 0.64
+timing_window = "immediate"
+rationale = "For a negative `export_control`, sector ETF exposure can move immediately."
+```
+
+Use the full example file at `docs/examples/scoring-policy.example.toml` as the copyable reference. Malformed scoring policy config fails fast with a clear error instead of being silently ignored.
+
 ## Documentation Map
 
 Start here based on your role:
