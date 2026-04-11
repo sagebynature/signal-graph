@@ -26,6 +26,13 @@ uv run signal-graph mcp-server
 
 The MCP surface exposes the same core journal operations as the CLI: capture, journalize, recall, and filtered signal listing.
 
+Recall tips:
+- use quoted phrases for exact phrase preference, for example `--query '"deployment checklist"'`
+- use `--view ranked` for best-match ranking
+- use `--view timeline` for time-ordered recall
+- use `--view session` for session-grouped recall
+- combine free-text queries with provenance filters for narrower recall
+
 ## When To Use Which Entry Point
 
 - Use `submit` when a human or agent is manually capturing an event hypothesis

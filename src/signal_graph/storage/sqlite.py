@@ -516,12 +516,16 @@ class SqliteStore:
                     artifact_id,
                     query,
                     signal_ids,
+                    view,
+                    query_contract,
+                    matches,
+                    session_groups,
                     markdown_text,
                     artifact_path,
                     graph_paths,
                     provenance_contract,
                     created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 self._serialize_recall_artifact(artifact),
             )
@@ -604,6 +608,10 @@ class SqliteStore:
                 artifact_id TEXT PRIMARY KEY,
                 query TEXT NOT NULL,
                 signal_ids TEXT NOT NULL,
+                view TEXT NOT NULL DEFAULT 'ranked',
+                query_contract TEXT,
+                matches TEXT NOT NULL DEFAULT '[]',
+                session_groups TEXT NOT NULL DEFAULT '[]',
                 markdown_text TEXT NOT NULL,
                 artifact_path TEXT NOT NULL,
                 graph_paths TEXT NOT NULL,
@@ -612,6 +620,10 @@ class SqliteStore:
             )
             """
         )
+        self._ensure_column(connection, "recall_artifacts", "view TEXT NOT NULL DEFAULT 'ranked'")
+        self._ensure_column(connection, "recall_artifacts", "query_contract TEXT")
+        self._ensure_column(connection, "recall_artifacts", "matches TEXT NOT NULL DEFAULT '[]'")
+        self._ensure_column(connection, "recall_artifacts", "session_groups TEXT NOT NULL DEFAULT '[]'")
         self._ensure_column(connection, "journal_signals", "source_url TEXT")
         self._ensure_column(connection, "journal_signals", "source_ref TEXT")
         self._ensure_column(connection, "journal_signals", "raw_payload TEXT")
@@ -1101,6 +1113,14 @@ class SqliteStore:
             artifact.artifact_id,
             artifact.query,
             json.dumps(artifact.signal_ids),
+            artifact.view,
+            json.dumps(artifact.query_contract.model_dump(mode="json"))
+            if artifact.query_contract is not None
+            else None,
+            json.dumps([match.model_dump(mode="json") for match in artifact.matches]),
+            json.dumps(
+                [group.model_dump(mode="json") for group in artifact.session_groups]
+            ),
             artifact.markdown_text,
             artifact.artifact_path or "",
             json.dumps(artifact.graph_paths),

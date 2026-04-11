@@ -24,6 +24,11 @@ def recall_signal(
     session_id: str | None = typer.Option(None, "--session-id"),
     runtime_family: str | None = typer.Option(None, "--runtime-family"),
     source_name: str | None = typer.Option(None, "--source-name"),
+    view: str = typer.Option(
+        "ranked",
+        "--view",
+        help="Recall view mode: ranked, timeline, or session.",
+    ),
 ) -> None:
     store = SqliteStore(DEFAULT_PROJECT_DIR / "signal_graph.db")
     artifact = recall_signals(
@@ -35,5 +40,6 @@ def recall_signal(
         session_id=session_id,
         runtime_family=runtime_family,
         source_name=source_name,
+        view=view,
     )
     print(artifact.model_dump_json())

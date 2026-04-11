@@ -14,6 +14,7 @@ from signal_graph.services.journal import (
     parse_origin_type,
     recall_signals,
 )
+from signal_graph.services.recall_engine import build_recall_query, run_recall_query, render_richer_recall_markdown
 from signal_graph.storage.sqlite import SqliteStore
 
 SUPPORTED_PROTOCOL_VERSIONS = {"2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25"}
@@ -90,8 +91,11 @@ def build_tool_definitions() -> list[dict[str, Any]]:
                     "session_id": {"type": "string"},
                     "runtime_family": {"type": "string"},
                     "source_name": {"type": "string"},
+                    "view": {
+                        "type": "string",
+                        "enum": ["ranked", "timeline", "session"],
+                    },
                 },
-                "required": ["query"],
             },
         },
         {
@@ -110,6 +114,10 @@ def build_tool_definitions() -> list[dict[str, Any]]:
                     "session_id": {"type": "string"},
                     "runtime_family": {"type": "string"},
                     "source_name": {"type": "string"},
+                    "view": {
+                        "type": "string",
+                        "enum": ["ranked", "timeline", "session"],
+                    },
                 },
             },
         },
@@ -250,13 +258,14 @@ def _handle_tool_call(
         store.init_db()
         artifact = recall_signals(
             store,
-            query=str(arguments["query"]),
+            query=_optional_str(arguments.get("query")) or "",
             artifact_dir=artifact_dir,
             limit=int(arguments.get("limit", 5)),
             origin_type=_optional_str(arguments.get("origin_type")),
             session_id=_optional_str(arguments.get("session_id")),
             runtime_family=_optional_str(arguments.get("runtime_family")),
             source_name=_optional_str(arguments.get("source_name")),
+            view=str(arguments.get("view", "ranked")),
         )
         return _tool_success(
             text=artifact.markdown_text,
@@ -264,19 +273,24 @@ def _handle_tool_call(
         )
     if name == "signal_graph_list_signals":
         store.init_db()
-        signals = store.search_journal_signals(
+        query = build_recall_query(
             query=_optional_str(arguments.get("query")) or "",
             limit=int(arguments.get("limit", 10)),
             origin_type=_optional_str(arguments.get("origin_type")),
             session_id=_optional_str(arguments.get("session_id")),
             runtime_family=_optional_str(arguments.get("runtime_family")),
             source_name=_optional_str(arguments.get("source_name")),
+            view=str(arguments.get("view", "ranked")),
         )
+        result = run_recall_query(
+            signals=store.list_journal_signals(),
+            query=query,
+        )
+        structured_content = result.model_dump(mode="json")
+        structured_content["markdown_preview"] = render_richer_recall_markdown(result)
         return _tool_success(
-            text=f"Matched {len(signals)} journal signals",
-            structured_content={
-                "signals": [signal.model_dump(mode="json") for signal in signals]
-            },
+            text=f"Matched {len(result.matches)} journal signals",
+            structured_content=structured_content,
         )
     return _jsonrpc_error_result(f"Unknown tool: {name}")
 

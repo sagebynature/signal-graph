@@ -16,6 +16,7 @@ from signal_graph.models.journal import (
     OriginType,
     RecallArtifact,
 )
+from signal_graph.services.recall_engine import build_recall_query, render_richer_recall_markdown, run_recall_query
 from signal_graph.storage.sqlite import SqliteStore
 
 
@@ -126,50 +127,48 @@ def recall_signals(
     session_id: str | None = None,
     runtime_family: str | None = None,
     source_name: str | None = None,
+    view: str = "ranked",
 ) -> RecallArtifact:
-    normalized_query = query.strip()
-    if not normalized_query and not any(
-        [origin_type, session_id, runtime_family, source_name]
-    ):
-        raise ValueError("recall query must be non-empty unless filters are provided")
-
-    matches = store.search_journal_signals(
-        normalized_query,
+    recall_query = build_recall_query(
+        query=query,
         limit=limit,
         origin_type=origin_type,
         session_id=session_id,
         runtime_family=runtime_family,
         source_name=source_name,
+        view=view,
     )
-    if not matches:
+    result = run_recall_query(signals=store.list_journal_signals(), query=recall_query)
+    if not result.matches:
         raise ValueError(
-            f"no journal signals matched query: {normalized_query or '<filtered request>'}"
+            f"no journal signals matched query: {recall_query.raw_query or '<filtered request>'}"
         )
 
     created_at = datetime.now(UTC)
     artifact_id = f"ra-{uuid4().hex[:12]}"
-    markdown_text = render_recall_markdown(
-        normalized_query,
-        matches,
-        origin_type=origin_type,
-        session_id=session_id,
-        runtime_family=runtime_family,
-        source_name=source_name,
-    )
+    markdown_text = render_richer_recall_markdown(result)
     artifact_dir.mkdir(parents=True, exist_ok=True)
     artifact_path = artifact_dir / f"{artifact_id}.md"
     artifact_path.write_text(markdown_text)
 
     artifact = RecallArtifact(
         artifact_id=artifact_id,
-        query=normalized_query,
-        signal_ids=[signal.signal_id for signal in matches],
+        query=recall_query.raw_query,
+        signal_ids=[match.signal.signal_id for match in result.matches],
+        view=result.view,
+        query_contract=result.query_contract,
+        matches=result.matches,
+        session_groups=result.session_groups,
         markdown_text=markdown_text,
         artifact_path=str(artifact_path),
-        graph_paths={signal.signal_id: build_graph_path(signal) for signal in matches},
+        graph_paths={
+            match.signal.signal_id: build_graph_path(match.signal)
+            for match in result.matches
+        },
         provenance_contract={
             "required_fields": MINIMUM_PROVENANCE_FIELDS,
             "non_semantic_determinism_fields": NON_SEMANTIC_DETERMINISM_FIELDS,
+            "ordering_precedence": result.ordering_precedence,
         },
         created_at=created_at,
     )
@@ -194,104 +193,9 @@ def build_graph_path(signal: JournalSignal) -> list[str]:
     return path
 
 
-def render_recall_markdown(
-    query: str,
-    matches: list[JournalSignal],
-    *,
-    origin_type: str | None = None,
-    session_id: str | None = None,
-    runtime_family: str | None = None,
-    source_name: str | None = None,
-) -> str:
-    origin_types = sorted({signal.origin_type for signal in matches})
-    sessions = sorted(
-        {
-            signal.agent_session_id
-            for signal in matches
-            if signal.agent_session_id is not None
-        }
-    )
-    active_filters = _active_filters(
-        origin_type=origin_type,
-        session_id=session_id,
-        runtime_family=runtime_family,
-        source_name=source_name,
-    )
-    lines = [
-        "# Signal Recall",
-        "",
-        f"- Query: `{query or 'none (filter-only recall)'}`",
-        f"- Matched signals: {len(matches)}",
-        f"- Origin types: {', '.join(origin_types)}",
-        f"- Sessions: {', '.join(sessions) if sessions else 'none recorded'}",
-        _filters_markdown_line(active_filters),
-        "",
-        "## Summary",
-        (
-            "Signal Graph matched signals with provenance-rich recall. "
-            "Every entry below preserves raw signal context plus origin, session, "
-            "location, graph path, and intent status."
-        ),
-        "",
-        "## Matches",
-    ]
-    for signal in matches:
-        lines.extend(
-            [
-                "",
-                f"### {signal.signal_id}",
-                f"- Origin: `{signal.origin_type}` via `{signal.source_name}`",
-                f"- Captured at: `{signal.captured_at.isoformat() if signal.captured_at else 'unknown'}`",
-                (
-                    "- Agent/session: "
-                    f"`{signal.agent_runtime or 'human'}` / "
-                    f"`{signal.agent_process or 'n/a'}` / "
-                    f"`{signal.agent_session_id or 'n/a'}`"
-                ),
-                f"- Source ref: `{signal.source_ref or signal.source_url or signal.workspace_path or 'none recorded'}`",
-                f"- Graph path: `{' -> '.join(build_graph_path(signal))}`",
-                (
-                    f"- Intent: `{signal.intent_status}` — "
-                    f"{signal.why_text or 'why not asserted'}"
-                ),
-                f"- Who: {', '.join(signal.who_refs) or 'none'}",
-                f"- What: {', '.join(signal.what_refs) or 'none'}",
-                f"- Where: {', '.join(signal.where_refs) or 'none'}",
-                f"- How: {', '.join(signal.how_refs) or 'none'}",
-                "",
-                "```text",
-                signal.raw_text,
-                "```",
-            ]
-        )
-    return "\n".join(lines)
-
-
 def _normalize_refs(refs: list[str] | None) -> list[str]:
     unique_refs = {ref.strip() for ref in refs or [] if ref.strip()}
     return sorted(unique_refs)
-
-
-def _active_filters(
-    *,
-    origin_type: str | None,
-    session_id: str | None,
-    runtime_family: str | None,
-    source_name: str | None,
-) -> dict[str, str | None]:
-    return {
-        "origin_type": origin_type,
-        "session_id": session_id,
-        "runtime_family": runtime_family,
-        "source_name": source_name,
-    }
-
-
-def _filters_markdown_line(active_filters: dict[str, str | None]) -> str:
-    rendered_filters = [
-        f"{key}={value}" for key, value in active_filters.items() if value is not None
-    ]
-    return f"- Filters: {', '.join(rendered_filters)}" if rendered_filters else "- Filters: none"
 
 
 def parse_optional_datetime(value: str | None) -> datetime | None:

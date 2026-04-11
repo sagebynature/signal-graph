@@ -57,6 +57,12 @@ The journal pipeline is:
 
 The important operating rule is that Signal Graph should preserve **who / what / when / where** and only record **why** when intent is explicit or clearly labeled as inference.
 
+Stage 2 recall now supports:
+- quoted exact phrases, for example `--query '"deployment checklist"'`
+- provenance-aware filters such as `--origin-type`, `--session-id`, `--runtime-family`, and `--source-name`
+- multiple recall views via `--view ranked|timeline|session`
+- richer explanation payloads describing why each match ranked where it did
+
 For MCP clients, the repo also ships an stdio server surface:
 
 ```bash
