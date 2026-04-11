@@ -9,6 +9,7 @@ from typing import ParamSpec
 from neo4j.exceptions import DriverError, Neo4jError
 import typer
 
+from signal_graph.cli.bootstrap_describe import bootstrap_describe
 from signal_graph.cli.doctor import doctor
 from signal_graph.cli.capture_signal import capture_signal
 from signal_graph.cli.explain import explain
@@ -90,6 +91,7 @@ def _guard_command(
 
 
 app.command()(doctor)
+app.command("bootstrap-describe")(bootstrap_describe)
 app.command("capture-signal")(
     _guard_command(capture_signal, requires_initialized_project=True)
 )

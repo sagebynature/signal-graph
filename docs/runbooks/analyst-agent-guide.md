@@ -33,6 +33,11 @@ Recall tips:
 - use `--view session` for session-grouped recall
 - combine free-text queries with provenance filters for narrower recall
 
+Agent bootstrap tip:
+- start with `uv run signal-graph bootstrap-describe`
+- follow the documented smoke path in order
+- after a green smoke path, the next actions should come from the contract output rather than scraped prose
+
 ## When To Use Which Entry Point
 
 - Use `submit` when a human or agent is manually capturing an event hypothesis

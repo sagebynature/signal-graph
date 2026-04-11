@@ -77,12 +77,29 @@ uv run signal-graph-mcp
 
 ```bash
 uv sync
+uv run signal-graph bootstrap-describe
 uv run signal-graph doctor
 uv run signal-graph init
 uv run signal-graph version
 ```
 
 `signal-graph doctor` is non-destructive. It checks runtime readiness for the local workflow, verifies that `.signal-graph/config.toml` is parseable when present, and rejects malformed `NEO4J_AUTH` values. The config file is optional.
+
+### Agent Bootstrap Contract
+
+Agents should start with the runtime-owned bootstrap contract:
+
+```bash
+uv run signal-graph bootstrap-describe
+```
+
+This returns a versioned machine-readable contract with:
+- entrypoints
+- prerequisites and environment expectations
+- the minimum smoke path
+- expected proof outputs
+- MCP startup assumptions
+- next recommended actions
 
 ### Local Neo4j
 

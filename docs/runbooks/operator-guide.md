@@ -15,6 +15,7 @@ If you want product context first, read [`../overview/product.md`](../overview/p
 ## Bootstrap
 
 ```bash
+uv run signal-graph bootstrap-describe
 uv sync
 uv run signal-graph doctor
 uv run signal-graph init
@@ -22,6 +23,22 @@ uv run signal-graph version
 ```
 
 `signal-graph doctor` is non-destructive. It validates runtime readiness for the local workflow, confirms `.signal-graph/config.toml` is parseable when present, and rejects malformed `NEO4J_AUTH` values. The config file itself is optional.
+
+The recommended source of truth for agent bootstrap/setup is the runtime-owned contract:
+
+```bash
+uv run signal-graph bootstrap-describe
+```
+
+Docs and runbooks should mirror that contract, not redefine it.
+
+For the MCP startup contract, the canonical launch paths are:
+
+```bash
+uv run signal-graph mcp-server
+# or
+uv run signal-graph-mcp
+```
 
 ## Neo4j Runtime
 

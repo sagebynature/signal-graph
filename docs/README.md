@@ -5,6 +5,7 @@ Use this page to choose the right starting point.
 ## Start Here
 
 - New reader: go to [`../README.md`](../README.md)
+- Agent/operator bootstrap contract: run `uv run signal-graph bootstrap-describe`
 - Product or stakeholder context: go to [`overview/product.md`](overview/product.md)
 - Architecture and storage model: go to [`architecture/system-overview.md`](architecture/system-overview.md)
 - Local setup and troubleshooting: go to [`runbooks/operator-guide.md`](runbooks/operator-guide.md)
