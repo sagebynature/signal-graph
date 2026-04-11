@@ -12,15 +12,24 @@ Use the CLI in a strict pipeline order so every downstream step has stored local
 
 Do not skip `research`. It is the provenance gate for downstream graph and memo steps.
 
+For the agent signal journal flow, use:
+
+`capture-signal` -> `journalize-signal` -> `recall-signal`
+
+Do not invent `why`. Only store intent when it is explicit or clearly labeled as inference.
+
 ## When To Use Which Entry Point
 
 - Use `submit` when a human or agent is manually capturing an event hypothesis
+- Use `capture-signal` when a human or agent is capturing a journal signal rather than a trading event candidate
 - Use `fetch` when a connector can return raw source items
 - Use `normalize` to convert raw source text into a canonical event candidate
 - Use `research` to attach supporting evidence, contradictions, and confidence context
 - Use `ingest` when the event is ready for graph-oriented reasoning
 - Use `rank` to get candidate instruments and timing windows
 - Use `explain` to write a memo with clear provenance boundaries
+- Use `journalize-signal` to attach graph pivots across `who / what / when / where / why / how`
+- Use `recall-signal` to retrieve journal signals with provenance-rich markdown and structured JSON
 
 ## Standard Manual Workflow
 
@@ -113,6 +122,7 @@ Use `--allow-empty` only when you deliberately want an empty provenance shell. N
 
 - Never claim a causal path without stored provenance and supporting source records
 - Separate confirmed fact, graph implication, and assistant inference in written output
+- Treat `why` as optional and evidence-bound; unknown intent is better than fabricated intent
 - Prefer already ingested local events before fetching new data
 - Treat contradictions as part of the research record, not as noise to hide
 - Avoid presenting ranking output as trading advice; it is decision-support input
@@ -150,5 +160,6 @@ Reference example:
 - Local state lives under `.signal-graph/`
 - SQLite is the source of truth for pipeline progress and provenance artifacts in this MVP
 - Neo4j is the reasoning layer, not the system of record for every object
+- The journal surface is CLI-first today and intentionally shaped for later MCP parity
 - The demo ranking universe is intentionally small unless you load more instrument reference data
 - When in doubt, favor deterministic local behavior over implicit network activity

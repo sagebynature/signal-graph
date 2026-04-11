@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from datetime import UTC, datetime
 
 from signal_graph.models.events import EventCandidate
+from signal_graph.models.journal import JournalSignal, RecallArtifact
 from signal_graph.models.research import ResearchBundle
 from signal_graph.storage.sqlite import SqliteStore
 
@@ -18,6 +20,109 @@ def test_init_db_creates_canonical_pipeline_tables(tmp_path):
     assert store.table_exists("event_candidate_source_items")
     assert store.table_exists("research_bundles")
     assert store.table_exists("graph_events")
+    assert store.table_exists("journal_signals")
+    assert store.table_exists("recall_artifacts")
+
+
+def test_save_and_get_journal_signal_round_trips_metadata(tmp_path):
+    store = SqliteStore(tmp_path / "signal_graph.db")
+    store.init_db()
+    signal = JournalSignal(
+        signal_id="sig-123",
+        origin_type="agent_artifact",
+        source_name="codex",
+        source_ref="notes/session.md",
+        raw_text="Agent updated the deployment checklist.",
+        content_hash="hash-123",
+        captured_at=datetime.now(UTC),
+        agent_host="workstation",
+        agent_process="codex",
+        agent_runtime="codex",
+        agent_session_id="session-1",
+        agent_role="executor",
+        workspace_path="/tmp/workspace",
+        intent_status="explicit",
+        why_text="Complete the rollout safely.",
+        who_refs=["agent:codex"],
+        what_refs=["deployment"],
+        where_refs=["notes/session.md"],
+        how_refs=["checklist update"],
+        graph_path=["SIGNAL", "ORIGIN:AGENT_ARTIFACT", "WHO", "WHAT"],
+    )
+
+    store.save_journal_signal(signal)
+
+    hydrated = store.get_journal_signal(signal.signal_id)
+
+    assert hydrated is not None
+    assert hydrated.origin_type == "agent_artifact"
+    assert hydrated.agent_session_id == "session-1"
+    assert hydrated.why_text == "Complete the rollout safely."
+    assert hydrated.graph_path == ["SIGNAL", "ORIGIN:AGENT_ARTIFACT", "WHO", "WHAT"]
+
+
+def test_search_journal_signals_orders_best_match_first(tmp_path):
+    store = SqliteStore(tmp_path / "signal_graph.db")
+    store.init_db()
+    captured_at = datetime.now(UTC)
+    store.save_journal_signal(
+        JournalSignal(
+            signal_id="sig-1",
+            origin_type="user",
+            source_name="manual",
+            raw_text="User recorded deployment signal for release train.",
+            content_hash="hash-1",
+            captured_at=captured_at,
+            what_refs=["deployment", "release"],
+        )
+    )
+    store.save_journal_signal(
+        JournalSignal(
+            signal_id="sig-2",
+            origin_type="external_reference",
+            source_name="docs",
+            raw_text="External reference about release policy only.",
+            content_hash="hash-2",
+            captured_at=captured_at,
+            what_refs=["release"],
+        )
+    )
+
+    matches = store.search_journal_signals("deployment release", limit=2)
+
+    assert [signal.signal_id for signal in matches] == ["sig-1", "sig-2"]
+
+
+def test_save_recall_artifact_persists_json_contract(tmp_path):
+    store = SqliteStore(tmp_path / "signal_graph.db")
+    store.init_db()
+    artifact = RecallArtifact(
+        artifact_id="ra-123",
+        query="deployment",
+        signal_ids=["sig-1"],
+        markdown_text="# Signal Recall",
+        artifact_path="/tmp/ra-123.md",
+        graph_paths={"sig-1": ["SIGNAL", "WHAT"]},
+        provenance_contract={"required_fields": ["signal_id"]},
+        created_at=datetime.now(UTC),
+    )
+
+    store.save_recall_artifact(artifact)
+
+    with sqlite3.connect(tmp_path / "signal_graph.db") as connection:
+        row = connection.execute(
+            """
+            SELECT query, signal_ids, graph_paths, provenance_contract
+            FROM recall_artifacts
+            WHERE artifact_id = 'ra-123'
+            """
+        ).fetchone()
+
+    assert row is not None
+    assert row[0] == "deployment"
+    assert json.loads(row[1]) == ["sig-1"]
+    assert json.loads(row[2]) == {"sig-1": ["SIGNAL", "WHAT"]}
+    assert json.loads(row[3]) == {"required_fields": ["signal_id"]}
 
 
 def test_init_db_adds_foreign_keys_for_related_event_tables(tmp_path):

@@ -10,12 +10,15 @@ from neo4j.exceptions import DriverError, Neo4jError
 import typer
 
 from signal_graph.cli.doctor import doctor
+from signal_graph.cli.capture_signal import capture_signal
 from signal_graph.cli.explain import explain
 from signal_graph.cli.fetch import fetch
 from signal_graph.cli.ingest import ingest
 from signal_graph.cli.init import init
+from signal_graph.cli.journalize_signal import journalize_signal
 from signal_graph.cli.normalize import normalize
 from signal_graph.cli.rank import rank
+from signal_graph.cli.recall_signal import recall_signal
 from signal_graph.cli.research import research
 from signal_graph.cli.submit import submit
 from signal_graph.config import DEFAULT_PROJECT_DIR
@@ -86,12 +89,21 @@ def _guard_command(
 
 
 app.command()(doctor)
+app.command("capture-signal")(
+    _guard_command(capture_signal, requires_initialized_project=True)
+)
 app.command()(_guard_command(explain, requires_initialized_project=True))
 app.command()(fetch)
 app.command()(_guard_command(ingest, requires_initialized_project=True))
 app.command()(init)
+app.command("journalize-signal")(
+    _guard_command(journalize_signal, requires_initialized_project=True)
+)
 app.command()(_guard_command(normalize, requires_initialized_project=True))
 app.command()(_guard_command(rank, requires_initialized_project=True))
+app.command("recall-signal")(
+    _guard_command(recall_signal, requires_initialized_project=True)
+)
 app.command()(_guard_command(research, requires_initialized_project=True))
 app.command()(submit)
 

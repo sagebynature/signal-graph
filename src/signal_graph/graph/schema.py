@@ -11,6 +11,11 @@ SCHEMA_CONSTRAINTS = [
     "CREATE CONSTRAINT document_id IF NOT EXISTS FOR (d:Document) REQUIRE d.document_id IS UNIQUE",
 ]
 
+JOURNAL_SCHEMA_CONSTRAINTS = [
+    "CREATE CONSTRAINT journal_signal IF NOT EXISTS FOR (s:JournalSignal) REQUIRE s.signal_id IS UNIQUE",
+    "CREATE CONSTRAINT signal_actor IF NOT EXISTS FOR (a:SignalActor) REQUIRE a.actor_key IS UNIQUE",
+]
+
 
 DEMO_REFERENCE_GRAPH_QUERIES = [
     "MERGE (c:Company {ticker: 'TSMC'}) SET c.name = 'Taiwan Semiconductor Manufacturing Company'",
@@ -181,3 +186,87 @@ def graph_ingest_statements(
         (graph_cleanup_query(), params),
         (graph_event_query(), params),
     ]
+
+
+def journal_signal_query() -> str:
+    return (
+        "MERGE (s:JournalSignal {signal_id: $signal_id}) "
+        "SET s.origin_type = $origin_type, "
+        "    s.source_name = $source_name, "
+        "    s.source_ref = $source_ref, "
+        "    s.source_url = $source_url, "
+        "    s.raw_text = $raw_text, "
+        "    s.content_hash = $content_hash, "
+        "    s.intent_status = $intent_status, "
+        "    s.why_text = $why_text, "
+        "    s.captured_at = $captured_at, "
+        "    s.workspace_path = $workspace_path "
+        "FOREACH (actor_key IN CASE WHEN $actor_key = '' THEN [] ELSE [$actor_key] END | "
+        "    MERGE (a:SignalActor {actor_key: actor_key}) "
+        "    SET a.host = $agent_host, "
+        "        a.process = $agent_process, "
+        "        a.runtime = $agent_runtime, "
+        "        a.session_id = $agent_session_id, "
+        "        a.role = $agent_role "
+        "    MERGE (s)-[:ACTED_BY]->(a)"
+        ") "
+        "FOREACH (ref IN $who_refs | "
+        "    MERGE (w:WhoRef {value: ref}) "
+        "    MERGE (s)-[:WHO]->(w)"
+        ") "
+        "FOREACH (ref IN $what_refs | "
+        "    MERGE (w:WhatRef {value: ref}) "
+        "    MERGE (s)-[:WHAT]->(w)"
+        ") "
+        "FOREACH (ref IN $where_refs | "
+        "    MERGE (w:WhereRef {value: ref}) "
+        "    MERGE (s)-[:WHERE]->(w)"
+        ") "
+        "FOREACH (ref IN $how_refs | "
+        "    MERGE (h:HowRef {value: ref}) "
+        "    MERGE (s)-[:HOW]->(h)"
+        ") "
+        "FOREACH (why_text IN CASE WHEN $why_text IS NULL THEN [] ELSE [$why_text] END | "
+        "    MERGE (i:IntentRef {value: why_text, status: $intent_status}) "
+        "    MERGE (s)-[:WHY]->(i)"
+        ") "
+        "RETURN s.signal_id AS signal_id"
+    )
+
+
+def journal_signal_params(signal) -> dict[str, Any]:
+    actor_key = "|".join(
+        [
+            signal.agent_runtime or "",
+            signal.agent_host or "",
+            signal.agent_process or "",
+            signal.agent_session_id or "",
+        ]
+    )
+    return {
+        "signal_id": signal.signal_id,
+        "origin_type": signal.origin_type,
+        "source_name": signal.source_name,
+        "source_ref": signal.source_ref,
+        "source_url": signal.source_url,
+        "raw_text": signal.raw_text,
+        "content_hash": signal.content_hash,
+        "intent_status": signal.intent_status,
+        "why_text": signal.why_text,
+        "captured_at": signal.captured_at.isoformat() if signal.captured_at else None,
+        "workspace_path": signal.workspace_path,
+        "actor_key": actor_key,
+        "agent_host": signal.agent_host,
+        "agent_process": signal.agent_process,
+        "agent_runtime": signal.agent_runtime,
+        "agent_session_id": signal.agent_session_id,
+        "agent_role": signal.agent_role,
+        "who_refs": signal.who_refs,
+        "what_refs": signal.what_refs,
+        "where_refs": signal.where_refs,
+        "how_refs": signal.how_refs,
+    }
+
+
+def journal_signal_statements(signal) -> list[tuple[str, dict[str, Any] | None]]:
+    return [(journal_signal_query(), journal_signal_params(signal))]

@@ -8,6 +8,7 @@ from pathlib import Path
 
 from signal_graph.models.events import EventCandidate
 from signal_graph.models.graph import GraphEvent
+from signal_graph.models.journal import JournalSignal, RecallArtifact
 from signal_graph.models.policy import ScoringPolicy
 from signal_graph.models.research import ResearchBundle
 from signal_graph.models.source import RawSourceItem
@@ -402,6 +403,126 @@ class SqliteStore:
             ingest_decision=row[6],
         )
 
+    def save_journal_signal(self, signal: JournalSignal) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                """
+                INSERT OR REPLACE INTO journal_signals (
+                    signal_id,
+                    origin_type,
+                    source_name,
+                    source_url,
+                    source_ref,
+                    raw_text,
+                    raw_payload,
+                    content_hash,
+                    captured_at,
+                    observed_at,
+                    published_at,
+                    agent_host,
+                    agent_process,
+                    agent_runtime,
+                    agent_session_id,
+                    agent_role,
+                    workspace_path,
+                    intent_status,
+                    why_text,
+                    who_refs,
+                    what_refs,
+                    where_refs,
+                    how_refs,
+                    graph_path,
+                    journaled_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                self._serialize_journal_signal(signal),
+            )
+
+    def get_journal_signal(self, signal_id: str) -> JournalSignal | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                f"""
+                SELECT {self._journal_signal_select_columns()}
+                FROM journal_signals
+                WHERE signal_id = ?
+                """,
+                (signal_id,),
+            ).fetchone()
+
+        return self._hydrate_journal_signal(row)
+
+    def list_journal_signals(self) -> list[JournalSignal]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                f"""
+                SELECT {self._journal_signal_select_columns()}
+                FROM journal_signals
+                ORDER BY captured_at DESC, signal_id DESC
+                """
+            ).fetchall()
+
+        return [
+            signal
+            for row in rows
+            if (signal := self._hydrate_journal_signal(row)) is not None
+        ]
+
+    def search_journal_signals(self, query: str, *, limit: int = 5) -> list[JournalSignal]:
+        query_terms = [term for term in query.lower().split() if term]
+        scored: list[tuple[int, JournalSignal]] = []
+        for signal in self.list_journal_signals():
+            haystack = " ".join(
+                [
+                    signal.raw_text,
+                    signal.source_name,
+                    signal.source_ref or "",
+                    signal.source_url or "",
+                    signal.agent_host or "",
+                    signal.agent_process or "",
+                    signal.agent_runtime or "",
+                    signal.agent_session_id or "",
+                    signal.agent_role or "",
+                    signal.workspace_path or "",
+                    signal.why_text or "",
+                    " ".join(signal.who_refs),
+                    " ".join(signal.what_refs),
+                    " ".join(signal.where_refs),
+                    " ".join(signal.how_refs),
+                ]
+            ).lower()
+            score = sum(term in haystack for term in query_terms)
+            if score <= 0:
+                continue
+            scored.append((score, signal))
+
+        scored.sort(
+            key=lambda item: (
+                item[0],
+                item[1].captured_at.isoformat() if item[1].captured_at else "",
+                item[1].signal_id,
+            ),
+            reverse=True,
+        )
+        return [signal for _, signal in scored[:limit]]
+
+    def save_recall_artifact(self, artifact: RecallArtifact) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                """
+                INSERT OR REPLACE INTO recall_artifacts (
+                    artifact_id,
+                    query,
+                    signal_ids,
+                    markdown_text,
+                    artifact_path,
+                    graph_paths,
+                    provenance_contract,
+                    created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                self._serialize_recall_artifact(artifact),
+            )
+
     def _apply_additive_migrations(self, connection: sqlite3.Connection) -> None:
         self._ensure_column(connection, "event_candidates", "dedupe_fingerprint TEXT")
         self._ensure_column(connection, "event_candidates", "created_at TEXT")
@@ -443,10 +564,82 @@ class SqliteStore:
                 ON research_bundles(event_candidate_id, bundle_revision)
             """
         )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS journal_signals (
+                signal_id TEXT PRIMARY KEY,
+                origin_type TEXT NOT NULL,
+                source_name TEXT NOT NULL,
+                source_url TEXT,
+                source_ref TEXT,
+                raw_text TEXT NOT NULL,
+                raw_payload TEXT,
+                content_hash TEXT NOT NULL,
+                captured_at TEXT NOT NULL,
+                observed_at TEXT,
+                published_at TEXT,
+                agent_host TEXT,
+                agent_process TEXT,
+                agent_runtime TEXT,
+                agent_session_id TEXT,
+                agent_role TEXT,
+                workspace_path TEXT,
+                intent_status TEXT NOT NULL,
+                why_text TEXT,
+                who_refs TEXT NOT NULL,
+                what_refs TEXT NOT NULL,
+                where_refs TEXT NOT NULL,
+                how_refs TEXT NOT NULL,
+                graph_path TEXT NOT NULL DEFAULT '[]',
+                journaled_at TEXT
+            )
+            """
+        )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS recall_artifacts (
+                artifact_id TEXT PRIMARY KEY,
+                query TEXT NOT NULL,
+                signal_ids TEXT NOT NULL,
+                markdown_text TEXT NOT NULL,
+                artifact_path TEXT NOT NULL,
+                graph_paths TEXT NOT NULL,
+                provenance_contract TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            )
+            """
+        )
+        self._ensure_column(connection, "journal_signals", "source_url TEXT")
+        self._ensure_column(connection, "journal_signals", "source_ref TEXT")
+        self._ensure_column(connection, "journal_signals", "raw_payload TEXT")
+        self._ensure_column(connection, "journal_signals", "observed_at TEXT")
+        self._ensure_column(connection, "journal_signals", "published_at TEXT")
+        self._ensure_column(connection, "journal_signals", "agent_host TEXT")
+        self._ensure_column(connection, "journal_signals", "agent_process TEXT")
+        self._ensure_column(connection, "journal_signals", "agent_runtime TEXT")
+        self._ensure_column(connection, "journal_signals", "agent_session_id TEXT")
+        self._ensure_column(connection, "journal_signals", "agent_role TEXT")
+        self._ensure_column(connection, "journal_signals", "workspace_path TEXT")
+        self._ensure_column(connection, "journal_signals", "why_text TEXT")
+        self._ensure_column(connection, "journal_signals", "graph_path TEXT")
+        self._ensure_column(connection, "journal_signals", "journaled_at TEXT")
+        connection.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_journal_signals_captured_at
+                ON journal_signals(captured_at DESC)
+            """
+        )
+        connection.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_journal_signals_session_id
+                ON journal_signals(agent_session_id)
+            """
+        )
         self._backfill_event_candidate_provenance(connection)
         self._backfill_event_candidate_source_item_lookup(connection)
         self._backfill_research_bundle_provenance(connection)
         self._backfill_graph_event_research_bundle_lookup(connection)
+        self._backfill_journal_signal_defaults(connection)
 
     def _ensure_column(
         self, connection: sqlite3.Connection, table_name: str, column_definition: str
@@ -734,4 +927,117 @@ class SqliteStore:
             candidate_confidence=row[8],
             candidate_status=row[9],
             created_at=datetime.fromisoformat(row[10]) if row[10] else None,
+        )
+
+    def _backfill_journal_signal_defaults(self, connection: sqlite3.Connection) -> None:
+        connection.execute(
+            """
+            UPDATE journal_signals
+            SET graph_path = '[]'
+            WHERE graph_path IS NULL OR graph_path = ''
+            """
+        )
+
+    def _hydrate_journal_signal(
+        self, row: sqlite3.Row | tuple | None
+    ) -> JournalSignal | None:
+        if row is None:
+            return None
+
+        return JournalSignal(
+            signal_id=row[0],
+            origin_type=row[1],
+            source_name=row[2],
+            source_url=row[3],
+            source_ref=row[4],
+            raw_text=row[5],
+            raw_payload=row[6],
+            content_hash=row[7],
+            captured_at=datetime.fromisoformat(row[8]) if row[8] else None,
+            observed_at=datetime.fromisoformat(row[9]) if row[9] else None,
+            published_at=datetime.fromisoformat(row[10]) if row[10] else None,
+            agent_host=row[11],
+            agent_process=row[12],
+            agent_runtime=row[13],
+            agent_session_id=row[14],
+            agent_role=row[15],
+            workspace_path=row[16],
+            intent_status=row[17],
+            why_text=row[18],
+            who_refs=json.loads(row[19]),
+            what_refs=json.loads(row[20]),
+            where_refs=json.loads(row[21]),
+            how_refs=json.loads(row[22]),
+            graph_path=json.loads(row[23]),
+            journaled_at=datetime.fromisoformat(row[24]) if row[24] else None,
+        )
+
+    def _journal_signal_select_columns(self) -> str:
+        return """
+            signal_id,
+            origin_type,
+            source_name,
+            source_url,
+            source_ref,
+            raw_text,
+            raw_payload,
+            content_hash,
+            captured_at,
+            observed_at,
+            published_at,
+            agent_host,
+            agent_process,
+            agent_runtime,
+            agent_session_id,
+            agent_role,
+            workspace_path,
+            intent_status,
+            why_text,
+            who_refs,
+            what_refs,
+            where_refs,
+            how_refs,
+            graph_path,
+            journaled_at
+        """
+
+    def _serialize_journal_signal(self, signal: JournalSignal) -> tuple:
+        return (
+            signal.signal_id,
+            signal.origin_type,
+            signal.source_name,
+            signal.source_url,
+            signal.source_ref,
+            signal.raw_text,
+            signal.raw_payload,
+            signal.content_hash,
+            signal.captured_at.isoformat() if signal.captured_at else "",
+            signal.observed_at.isoformat() if signal.observed_at else None,
+            signal.published_at.isoformat() if signal.published_at else None,
+            signal.agent_host,
+            signal.agent_process,
+            signal.agent_runtime,
+            signal.agent_session_id,
+            signal.agent_role,
+            signal.workspace_path,
+            signal.intent_status,
+            signal.why_text,
+            json.dumps(signal.who_refs),
+            json.dumps(signal.what_refs),
+            json.dumps(signal.where_refs),
+            json.dumps(signal.how_refs),
+            json.dumps(signal.graph_path),
+            signal.journaled_at.isoformat() if signal.journaled_at else None,
+        )
+
+    def _serialize_recall_artifact(self, artifact: RecallArtifact) -> tuple:
+        return (
+            artifact.artifact_id,
+            artifact.query,
+            json.dumps(artifact.signal_ids),
+            artifact.markdown_text,
+            artifact.artifact_path or "",
+            json.dumps(artifact.graph_paths),
+            json.dumps(artifact.provenance_contract),
+            artifact.created_at.isoformat() if artifact.created_at else "",
         )

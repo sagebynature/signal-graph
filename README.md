@@ -2,6 +2,8 @@
 
 `Signal Graph` is a CLI-first, provenance-aware trading research toolkit for turning raw market events into explainable trade candidates.
 
+It also now includes a **v1 agent signal journal** flow for capturing user signals, agent action artifacts, and external reference signals with lossless provenance and recall-friendly markdown artifacts.
+
 It is built for a workflow where an analyst or coding agent:
 
 1. collects or submits an event,
@@ -33,11 +35,13 @@ This repository implements the local operating surface for that workflow:
 ## Core Use Cases
 
 - Capture a breaking event from a manual note, a public source, or a structured feed
+- Capture a user or agent-generated signal with actor/session provenance
 - Normalize duplicate or noisy raw inputs into a single event candidate
 - Record the evidence used to support or challenge an event hypothesis
 - Ingest an event into a relationship graph to reason about spillover paths
 - Rank likely equities or ETFs for immediate or short-drift reaction windows
 - Produce a memo with explicit provenance boundaries
+- Recall journaled signals through a CLI-first, MCP-ready surface
 
 ## Workflow
 
@@ -46,6 +50,12 @@ The canonical pipeline is:
 `fetch` or `submit` -> `normalize` -> `research` -> `ingest` -> `rank` -> `explain`
 
 The important operating rule is that `research` is the provenance checkpoint. Downstream ranking or explanation claims should not outrun stored evidence.
+
+The journal pipeline is:
+
+`capture-signal` -> `journalize-signal` -> `recall-signal`
+
+The important operating rule is that Signal Graph should preserve **who / what / when / where** and only record **why** when intent is explicit or clearly labeled as inference.
 
 ## Quick Start
 
@@ -189,6 +199,9 @@ The repository currently provides:
 - a Neo4j-backed graph ingest path with an explicit demo reference-graph seed step
 - graph-based ranking that returns only tradable instrument candidates with path-aware reasons such as direct equity exposure, ETF holdings, and supplier spillover
 - memo generation that cites stored evidence and separates confirmed fact, graph implication, and assistant inference
+- journal signal capture for user signals, agent action artifacts, and external references
+- journal graph-path shaping across `who / what / when / where / why / how`
+- recall artifact generation that writes markdown plus structured CLI JSON for agent consumption
 
 This is not yet a production trading system. It is a structured local research toolkit and integration base.
 
