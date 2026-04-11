@@ -14,3 +14,11 @@ infra/neo4j/plugins/*
 
 pytest*
 docs/superpowers
+
+# Local OMX runtime artifacts
+.omx/context/
+.omx/interviews/
+.omx/logs/
+.omx/metrics.json
+.omx/state/
+.omx/tmux-hook.json
