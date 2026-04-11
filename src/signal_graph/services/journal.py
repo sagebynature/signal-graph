@@ -122,18 +122,40 @@ def recall_signals(
     query: str,
     artifact_dir: Path,
     limit: int = 5,
+    origin_type: str | None = None,
+    session_id: str | None = None,
+    runtime_family: str | None = None,
+    source_name: str | None = None,
 ) -> RecallArtifact:
     normalized_query = query.strip()
-    if not normalized_query:
-        raise ValueError("recall query must be non-empty")
+    if not normalized_query and not any(
+        [origin_type, session_id, runtime_family, source_name]
+    ):
+        raise ValueError("recall query must be non-empty unless filters are provided")
 
-    matches = store.search_journal_signals(normalized_query, limit=limit)
+    matches = store.search_journal_signals(
+        normalized_query,
+        limit=limit,
+        origin_type=origin_type,
+        session_id=session_id,
+        runtime_family=runtime_family,
+        source_name=source_name,
+    )
     if not matches:
-        raise ValueError(f"no journal signals matched query: {normalized_query}")
+        raise ValueError(
+            f"no journal signals matched query: {normalized_query or '<filtered request>'}"
+        )
 
     created_at = datetime.now(UTC)
     artifact_id = f"ra-{uuid4().hex[:12]}"
-    markdown_text = render_recall_markdown(normalized_query, matches)
+    markdown_text = render_recall_markdown(
+        normalized_query,
+        matches,
+        origin_type=origin_type,
+        session_id=session_id,
+        runtime_family=runtime_family,
+        source_name=source_name,
+    )
     artifact_dir.mkdir(parents=True, exist_ok=True)
     artifact_path = artifact_dir / f"{artifact_id}.md"
     artifact_path.write_text(markdown_text)
@@ -172,7 +194,15 @@ def build_graph_path(signal: JournalSignal) -> list[str]:
     return path
 
 
-def render_recall_markdown(query: str, matches: list[JournalSignal]) -> str:
+def render_recall_markdown(
+    query: str,
+    matches: list[JournalSignal],
+    *,
+    origin_type: str | None = None,
+    session_id: str | None = None,
+    runtime_family: str | None = None,
+    source_name: str | None = None,
+) -> str:
     origin_types = sorted({signal.origin_type for signal in matches})
     sessions = sorted(
         {
@@ -181,13 +211,20 @@ def render_recall_markdown(query: str, matches: list[JournalSignal]) -> str:
             if signal.agent_session_id is not None
         }
     )
+    active_filters = _active_filters(
+        origin_type=origin_type,
+        session_id=session_id,
+        runtime_family=runtime_family,
+        source_name=source_name,
+    )
     lines = [
         "# Signal Recall",
         "",
-        f"- Query: `{query}`",
+        f"- Query: `{query or 'none (filter-only recall)'}`",
         f"- Matched signals: {len(matches)}",
         f"- Origin types: {', '.join(origin_types)}",
         f"- Sessions: {', '.join(sessions) if sessions else 'none recorded'}",
+        _filters_markdown_line(active_filters),
         "",
         "## Summary",
         (
@@ -233,6 +270,28 @@ def render_recall_markdown(query: str, matches: list[JournalSignal]) -> str:
 def _normalize_refs(refs: list[str] | None) -> list[str]:
     unique_refs = {ref.strip() for ref in refs or [] if ref.strip()}
     return sorted(unique_refs)
+
+
+def _active_filters(
+    *,
+    origin_type: str | None,
+    session_id: str | None,
+    runtime_family: str | None,
+    source_name: str | None,
+) -> dict[str, str | None]:
+    return {
+        "origin_type": origin_type,
+        "session_id": session_id,
+        "runtime_family": runtime_family,
+        "source_name": source_name,
+    }
+
+
+def _filters_markdown_line(active_filters: dict[str, str | None]) -> str:
+    rendered_filters = [
+        f"{key}={value}" for key, value in active_filters.items() if value is not None
+    ]
+    return f"- Filters: {', '.join(rendered_filters)}" if rendered_filters else "- Filters: none"
 
 
 def parse_optional_datetime(value: str | None) -> datetime | None:

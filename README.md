@@ -57,6 +57,14 @@ The journal pipeline is:
 
 The important operating rule is that Signal Graph should preserve **who / what / when / where** and only record **why** when intent is explicit or clearly labeled as inference.
 
+For MCP clients, the repo also ships an stdio server surface:
+
+```bash
+uv run signal-graph mcp-server
+# or
+uv run signal-graph-mcp
+```
+
 ## Quick Start
 
 ### Bootstrap
@@ -202,6 +210,7 @@ The repository currently provides:
 - journal signal capture for user signals, agent action artifacts, and external references
 - journal graph-path shaping across `who / what / when / where / why / how`
 - recall artifact generation that writes markdown plus structured CLI JSON for agent consumption
+- MCP tool surface for capture, journalize, recall, and filtered signal listing
 
 This is not yet a production trading system. It is a structured local research toolkit and integration base.
 

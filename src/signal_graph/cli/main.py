@@ -16,6 +16,7 @@ from signal_graph.cli.fetch import fetch
 from signal_graph.cli.ingest import ingest
 from signal_graph.cli.init import init
 from signal_graph.cli.journalize_signal import journalize_signal
+from signal_graph.cli.mcp_server import mcp_server
 from signal_graph.cli.normalize import normalize
 from signal_graph.cli.rank import rank
 from signal_graph.cli.recall_signal import recall_signal
@@ -99,6 +100,7 @@ app.command()(init)
 app.command("journalize-signal")(
     _guard_command(journalize_signal, requires_initialized_project=True)
 )
+app.command("mcp-server")(_guard_command(mcp_server, requires_initialized_project=True))
 app.command()(_guard_command(normalize, requires_initialized_project=True))
 app.command()(_guard_command(rank, requires_initialized_project=True))
 app.command("recall-signal")(

@@ -23,6 +23,7 @@ dev = [
 
 [project.scripts]
 signal-graph = "signal_graph.cli.main:app"
+signal-graph-mcp = "signal_graph.mcp.server:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/signal_graph"]

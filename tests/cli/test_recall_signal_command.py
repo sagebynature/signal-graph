@@ -67,3 +67,47 @@ def test_recall_signal_writes_markdown_artifact(monkeypatch, tmp_path):
     assert "Signal Graph matched signals with provenance-rich recall." in payload["markdown_text"]
     artifact_path = Path(payload["artifact_path"])
     assert artifact_path.is_file()
+
+
+def test_recall_signal_supports_filter_only_lookup(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    install_fake_journal_graph_client(monkeypatch)
+
+    runner = CliRunner()
+    assert runner.invoke(app, ["init"]).exit_code == 0
+    capture = runner.invoke(
+        app,
+        [
+            "capture-signal",
+            "--text",
+            "Agent deployment signal scoped to one session.",
+            "--origin-type",
+            "agent_artifact",
+            "--source-name",
+            "codex",
+            "--runtime-family",
+            "codex",
+            "--session-id",
+            "session-only",
+            "--what",
+            "deployment",
+        ],
+    )
+    signal_id = json.loads(capture.stdout)["signal_id"]
+    assert runner.invoke(app, ["journalize-signal", "--signal", signal_id]).exit_code == 0
+
+    result = runner.invoke(
+        app,
+        [
+            "recall-signal",
+            "--session-id",
+            "session-only",
+            "--runtime-family",
+            "codex",
+        ],
+    )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["signal_ids"] == [signal_id]
+    assert "filter-only recall" in payload["markdown_text"]

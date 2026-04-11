@@ -18,6 +18,14 @@ For the agent signal journal flow, use:
 
 Do not invent `why`. Only store intent when it is explicit or clearly labeled as inference.
 
+For MCP clients, run:
+
+```bash
+uv run signal-graph mcp-server
+```
+
+The MCP surface exposes the same core journal operations as the CLI: capture, journalize, recall, and filtered signal listing.
+
 ## When To Use Which Entry Point
 
 - Use `submit` when a human or agent is manually capturing an event hypothesis
@@ -30,6 +38,7 @@ Do not invent `why`. Only store intent when it is explicit or clearly labeled as
 - Use `explain` to write a memo with clear provenance boundaries
 - Use `journalize-signal` to attach graph pivots across `who / what / when / where / why / how`
 - Use `recall-signal` to retrieve journal signals with provenance-rich markdown and structured JSON
+- Use `signal-graph mcp-server` when an MCP client needs the same recall surface over stdio
 
 ## Standard Manual Workflow
 

@@ -93,6 +93,47 @@ def test_search_journal_signals_orders_best_match_first(tmp_path):
     assert [signal.signal_id for signal in matches] == ["sig-1", "sig-2"]
 
 
+def test_search_journal_signals_supports_provenance_filters(tmp_path):
+    store = SqliteStore(tmp_path / "signal_graph.db")
+    store.init_db()
+    captured_at = datetime.now(UTC)
+    store.save_journal_signal(
+        JournalSignal(
+            signal_id="sig-user",
+            origin_type="user",
+            source_name="manual",
+            raw_text="User deployment approval signal.",
+            content_hash="hash-user",
+            captured_at=captured_at,
+            agent_session_id="session-user",
+            what_refs=["deployment"],
+        )
+    )
+    store.save_journal_signal(
+        JournalSignal(
+            signal_id="sig-agent",
+            origin_type="agent_artifact",
+            source_name="codex",
+            raw_text="Agent deployment checklist signal.",
+            content_hash="hash-agent",
+            captured_at=captured_at,
+            agent_runtime="codex",
+            agent_session_id="session-agent",
+            what_refs=["deployment"],
+        )
+    )
+
+    matches = store.search_journal_signals(
+        "",
+        limit=5,
+        origin_type="agent_artifact",
+        runtime_family="codex",
+        session_id="session-agent",
+    )
+
+    assert [signal.signal_id for signal in matches] == ["sig-agent"]
+
+
 def test_save_recall_artifact_persists_json_contract(tmp_path):
     store = SqliteStore(tmp_path / "signal_graph.db")
     store.init_db()

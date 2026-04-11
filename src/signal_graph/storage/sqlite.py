@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from hashlib import sha256
 import json
+import re
 import sqlite3
 from pathlib import Path
 
@@ -467,31 +468,33 @@ class SqliteStore:
             if (signal := self._hydrate_journal_signal(row)) is not None
         ]
 
-    def search_journal_signals(self, query: str, *, limit: int = 5) -> list[JournalSignal]:
-        query_terms = [term for term in query.lower().split() if term]
+    def search_journal_signals(
+        self,
+        query: str,
+        *,
+        limit: int = 5,
+        origin_type: str | None = None,
+        session_id: str | None = None,
+        runtime_family: str | None = None,
+        source_name: str | None = None,
+    ) -> list[JournalSignal]:
+        query_terms = self._query_terms(query)
+        exact_phrases = self._query_phrases(query)
         scored: list[tuple[int, JournalSignal]] = []
         for signal in self.list_journal_signals():
-            haystack = " ".join(
-                [
-                    signal.raw_text,
-                    signal.source_name,
-                    signal.source_ref or "",
-                    signal.source_url or "",
-                    signal.agent_host or "",
-                    signal.agent_process or "",
-                    signal.agent_runtime or "",
-                    signal.agent_session_id or "",
-                    signal.agent_role or "",
-                    signal.workspace_path or "",
-                    signal.why_text or "",
-                    " ".join(signal.who_refs),
-                    " ".join(signal.what_refs),
-                    " ".join(signal.where_refs),
-                    " ".join(signal.how_refs),
-                ]
-            ).lower()
-            score = sum(term in haystack for term in query_terms)
-            if score <= 0:
+            if origin_type is not None and signal.origin_type != origin_type:
+                continue
+            if session_id is not None and signal.agent_session_id != session_id:
+                continue
+            if runtime_family is not None and signal.agent_runtime != runtime_family:
+                continue
+            if source_name is not None and signal.source_name != source_name:
+                continue
+
+            score = self._journal_signal_score(
+                signal, query_terms=query_terms, exact_phrases=exact_phrases
+            )
+            if query.strip() and score <= 0:
                 continue
             scored.append((score, signal))
 
@@ -971,6 +974,69 @@ class SqliteStore:
             graph_path=json.loads(row[23]),
             journaled_at=datetime.fromisoformat(row[24]) if row[24] else None,
         )
+
+    def _journal_signal_score(
+        self,
+        signal: JournalSignal,
+        *,
+        query_terms: list[str],
+        exact_phrases: list[str],
+    ) -> int:
+        if not query_terms and not exact_phrases:
+            return 1
+
+        score = 0
+        raw_text = signal.raw_text.lower()
+        source_fields = [
+            (signal.source_name or "").lower(),
+            (signal.source_ref or "").lower(),
+            (signal.source_url or "").lower(),
+            (signal.workspace_path or "").lower(),
+            (signal.origin_type or "").lower(),
+            (signal.agent_runtime or "").lower(),
+            (signal.agent_session_id or "").lower(),
+            (signal.agent_process or "").lower(),
+        ]
+        taxonomy_fields = {
+            "who": [ref.lower() for ref in signal.who_refs],
+            "what": [ref.lower() for ref in signal.what_refs],
+            "where": [ref.lower() for ref in signal.where_refs],
+            "how": [ref.lower() for ref in signal.how_refs],
+            "why": [(signal.why_text or "").lower()],
+        }
+
+        for phrase in exact_phrases:
+            if phrase in raw_text:
+                score += 10
+            elif any(phrase in value for value in source_fields):
+                score += 6
+            elif any(
+                phrase in value
+                for values in taxonomy_fields.values()
+                for value in values
+            ):
+                score += 5
+
+        for term in query_terms:
+            if term in raw_text:
+                score += 5
+            if any(term in value for value in taxonomy_fields["what"]):
+                score += 4
+            if any(term in value for value in source_fields):
+                score += 3
+            if any(
+                term in value
+                for field in ("who", "where", "how", "why")
+                for value in taxonomy_fields[field]
+            ):
+                score += 2
+        return score
+
+    def _query_terms(self, query: str) -> list[str]:
+        return re.findall(r"[a-z0-9_:-]+", query.lower())
+
+    def _query_phrases(self, query: str) -> list[str]:
+        return [phrase.lower() for phrase in re.findall(r'"([^"]+)"', query)]
 
     def _journal_signal_select_columns(self) -> str:
         return """
