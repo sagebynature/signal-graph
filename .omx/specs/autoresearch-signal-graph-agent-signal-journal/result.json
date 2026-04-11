@@ -1,0 +1,12 @@
+{
+  "topic": "Competitive and architectural research for evolving Signal Graph into a lossless, provenance-first agent signal journal with staged recall/query and agent integration roadmap",
+  "evaluatorCommand": "python - <<'PY'\nfrom pathlib import Path\nimport json\nbase = Path('/home/sachoi/signal-graph/.omx/specs/autoresearch-signal-graph-agent-signal-journal')\nreport = base / 'report.md'\nsources = base / 'sources.json'\nmissing = []\nif not report.exists(): missing.append('report.md')\nif not sources.exists(): missing.append('sources.json')\nheadings_missing = []\nsource_count = 0\nsource_keys_ok = True\nif report.exists():\n    text = report.read_text()\n    required = [\n        '# Competitive Assessment',\n        '# Recommended v1 Scope',\n        '# Proposed Data Model Changes',\n        '# Agent Integration Surface',\n        '# Risks and Non-Goals',\n        '# Source Notes',\n    ]\n    headings_missing = [heading for heading in required if heading not in text]\nif sources.exists():\n    data = json.loads(sources.read_text())\n    source_count = len(data) if isinstance(data, list) else -1\n    if isinstance(data, list):\n        for item in data:\n            for key in ['title','url','kind','dateAccessed','notes']:\n                if key not in item:\n                    source_keys_ok = False\n                    break\n    else:\n        source_keys_ok = False\nstatus = 'pass' if not missing and not headings_missing and source_count >= 5 and source_keys_ok else 'fail'\nprint(json.dumps({\n    'status': status,\n    'missingFiles': missing,\n    'missingHeadings': headings_missing,\n    'sourceCount': source_count,\n    'sourceKeysOk': source_keys_ok\n}))\nPY",
+  "keepPolicy": "keep_all_artifacts",
+  "slug": "signal-graph-agent-signal-journal",
+  "launchReady": true,
+  "blockedReasons": [],
+  "specPath": ".omx/specs/deep-interview-autoresearch-signal-graph-agent-signal-journal.md",
+  "missionPath": ".omx/specs/autoresearch-signal-graph-agent-signal-journal/mission.md",
+  "sandboxPath": ".omx/specs/autoresearch-signal-graph-agent-signal-journal/sandbox.md",
+  "transcriptPath": ".omx/interviews/signal-graph-agent-signal-journal-20260411T160342Z.md"
+}

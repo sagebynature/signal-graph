@@ -1,0 +1,6 @@
+
+
+## WORKING MEMORY
+[2026-04-11T15:43:34.378Z] Deep-interview research turn: user requested PM/architect competitiveness scan using gbrain, mempalace, and GitHubAwesome to inform Sigma Graph positioning/adoption. Need feed evidence back into interview, maintain one-question cadence, and keep focus on MVP scope/non-goals/decision boundaries.
+
+[2026-04-11T15:44:27.380Z] Deep-interview research (2026-04-11): GBrain appeal = agent-installed, markdown/git knowledge model, hybrid search, recipes/skills, live sync, explicit verification. MemPalace appeal = raw verbatim retention, benchmarked recall, local/no-cloud, MCP/plugin integration, honest benchmark corrections. Adjacent GitHubAwesome trends = graphified repo comprehension, copy-paste skill/MCP playbooks. Brownfield note: signal-graph is currently a CLI-first trading research pipeline with SQLite provenance + Neo4j reasoning + markdown memo output; strongest extension path is provenance-first agent signal capture rather than generic 'memory OS' scope jump.

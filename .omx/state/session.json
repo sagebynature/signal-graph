@@ -1,0 +1,9 @@
+{
+  "session_id": "omx-1775921478817-6x2461",
+  "started_at": "2026-04-11T15:31:18.850Z",
+  "cwd": "/home/sachoi/signal-graph",
+  "pid": 1149385,
+  "platform": "linux",
+  "pid_start_ticks": 103510714,
+  "pid_cmdline": "node /home/sachoi/.mise/installs/node/25.8.1/bin/omx --madmax --high"
+}

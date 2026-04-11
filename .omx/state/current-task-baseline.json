@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "tasks": [
+    {
+      "branch_name": "main",
+      "worktree_path": "/home/sachoi/signal-graph",
+      "status": "active",
+      "created_at": "2026-04-11T15:37:12.528Z",
+      "updated_at": "2026-04-11T17:39:03.788Z"
+    }
+  ]
+}

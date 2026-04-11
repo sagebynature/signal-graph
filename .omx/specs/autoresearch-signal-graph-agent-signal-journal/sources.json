@@ -1,0 +1,51 @@
+[
+  {
+    "title": "Signal Graph README",
+    "url": "file:///home/sachoi/signal-graph/README.md",
+    "kind": "repo-file",
+    "dateAccessed": "2026-04-11",
+    "notes": "Defines Signal Graph as a CLI-first, provenance-aware toolkit with SQLite metadata, Neo4j reasoning, and filesystem artifacts."
+  },
+  {
+    "title": "Signal Graph System Overview",
+    "url": "file:///home/sachoi/signal-graph/docs/architecture/system-overview.md",
+    "kind": "repo-file",
+    "dateAccessed": "2026-04-11",
+    "notes": "Explains the CLI -> services -> models -> SQLite/Neo4j/filesystem split and current memo artifact boundary."
+  },
+  {
+    "title": "Signal Graph Analyst And Agent Guide",
+    "url": "file:///home/sachoi/signal-graph/docs/runbooks/analyst-agent-guide.md",
+    "kind": "repo-file",
+    "dateAccessed": "2026-04-11",
+    "notes": "Documents explicit workflow order, provenance rules, and markdown artifact behavior for human and agent users."
+  },
+  {
+    "title": "MemPalace README",
+    "url": "https://raw.githubusercontent.com/milla-jovovich/mempalace/main/README.md",
+    "kind": "project-doc",
+    "dateAccessed": "2026-04-11",
+    "notes": "Publicly emphasizes raw/verbatim storage, structured memory topology, and local-first MCP/plugin integration."
+  },
+  {
+    "title": "GBrain README",
+    "url": "https://raw.githubusercontent.com/garrytan/gbrain/master/README.md",
+    "kind": "project-doc",
+    "dateAccessed": "2026-04-11",
+    "notes": "Publicly emphasizes agent-operated setup, markdown/git knowledge model, and integration recipes for persistent agent memory."
+  },
+  {
+    "title": "GitHubAwesome: 25 AI agent projects",
+    "url": "https://githubawesome.com/25-ai-agent-projects-julep-big-agi-anytool-playwriter-vibe-kanban-agent-s-potpie-liveblocks/",
+    "kind": "trend-roundup",
+    "dateAccessed": "2026-04-11",
+    "notes": "Published December 14, 2025. Highlights agent memory, orchestration, MCP integration, and knowledge-graph/code-aware projects as current open-source interest areas."
+  },
+  {
+    "title": "ADR-0002: SQLite plus Neo4j separation",
+    "url": "file:///home/sachoi/signal-graph/docs/adr/ADR-0002-sqlite-plus-neo4j-separation.md",
+    "kind": "repo-file",
+    "dateAccessed": "2026-04-11",
+    "notes": "Supports preserving the dual-store architecture as a product strength rather than collapsing everything into one system."
+  }
+]
