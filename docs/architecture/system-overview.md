@@ -2,115 +2,91 @@
 
 ## Architecture Summary
 
-`Signal Graph` is a local pipeline with a strict separation between command surface, transformation logic, canonical models, persistence, graph reasoning, and memo output.
+`Signal Graph` V2 is a local memory and decision-support architecture with a strict separation between capture surfaces, canonical domain records, storage-of-record boundaries, derived projections, and retrieval/explanation transports.
 
 At a high level:
 
-`CLI -> services -> models -> SQLite / Neo4j / filesystem artifacts`
+`CLI + MCP transports -> capture/command services -> canonical memory domain -> filesystem/SQLite/graph projections -> retrieval/explanation/correction responses`
 
-That separation matters because the repo is built to make the research chain inspectable instead of collapsing everything into one opaque scoring step.
+The rewrite keeps the repository's CLI-first operating style, but the target architecture is no longer an event-to-trade pipeline. It is an owner-scoped memory system that can later explain prior actions and incorporate corrections without mutating raw truth.
 
 ## Major Components
 
-### CLI
+### Capture Surfaces
 
-The CLI under `src/signal_graph/cli/` is the operating contract for both humans and coding agents. Each command maps to one stage of the workflow.
+The CLI under `src/signal_graph/cli/` and the MCP server entrypoints remain the operating contract for both humans and coding agents. V2 requires the same core memory capabilities to be reachable through stdio and HTTP transports.
 
-### Services
+### Canonical Memory Domain
 
-The services layer under `src/signal_graph/services/` owns the domain logic:
+The V2 domain distinguishes these first-class records:
 
-- raw item creation and persistence
-- normalization and dedupe
-- research bundle creation
-- graph ingest orchestration
-- ranking
-- memo generation
+- `Owner`
+- `Actor`
+- `SessionContext`
+- `ActionEvent`
+- `Artifact`
+- `ShareEvent`
+- `DerivedInterpretation`
+- `CorrectionRedaction`
+- optional confidence-labeled `WhyInference`
 
-### Canonical Models
+Every AI actor action must link to a human owner.
 
-The models under `src/signal_graph/models/` define the main objects that move through the pipeline:
+### Append-Only Event And Artifact Storage
 
-- `RawSourceItem`
-- `EventCandidate`
-- `ResearchBundle`
-- `GraphEvent`
-- `RankedCandidate`
-- `MemoResponse`
+Raw hook payloads, share events, and source artifacts are preserved canonically. The system of record is append-only for captured events and immutable for raw artifact payloads. Later summaries, topics, or interpretations are stored as separate derived layers.
 
-### SQLite
+### Projection And Query Layers
 
-SQLite under `.signal-graph/signal_graph.db` is the local system of record for this MVP. It stores pipeline objects, provenance-linked data, and local progress across commands.
+Structured indexes, markdown views, and graph-oriented projections exist to make memory queryable by who, topic, and date. These projections are allowed to change when corrections arrive; the raw event and artifact record is not.
 
-### Neo4j
+### Explanation And Correction Services
 
-Neo4j is the graph reasoning layer. The current implementation is intentionally small, but the boundary already exists for explicit relationship traversal and richer ingest logic.
+Retrieval and explanation services assemble deterministic response shapes that include owner, actor, queried action/decision, provenance chain, supporting evidence refs, and confidence-labeled `why` when present. Correction/redaction services persist downstream policy changes and make those effects visible on subsequent reads.
 
-### Filesystem Artifacts
+### Brownfield V1 Runtime
 
-The `.signal-graph/` directory holds local project state:
+The existing event/research/rank/memo code remains in the repository as a brownfield reference lane. It is no longer the target product architecture for V2, but it still informs migration constraints and local operational compatibility.
 
-- `signal_graph.db` for SQLite state
-- `artifacts/` for generated memo output
-- `config.toml` for optional local overrides
+## Storage-Of-Record Split
 
-## Canonical Object Lifecycle
+The favored V2 storage boundary is:
 
-### 1. Intake
+- canonical raw artifacts on disk
+- append-only event envelopes with durable local indexing
+- graph/query projections for relationship traversal and explanation assembly
+- derived markdown or summary views generated from canonical records
 
-`submit` or `fetch` produces one or more `RawSourceItem` records.
+This keeps raw source material and append-only capture history stable while allowing query/index layers to evolve.
 
-### 2. Normalize
+## MCP Transport Model
 
-`normalize` converts a raw item into an `EventCandidate`. It also applies basic dedupe behavior using a fingerprint derived from the normalized title text.
+Both transports must wrap the same service-layer behavior.
 
-### 3. Research
-
-`research` creates a `ResearchBundle` for the event candidate. This is where supporting documents, contradictions, evidence spans, confidence, and notes belong.
-
-### 4. Ingest
-
-`ingest` validates that the event candidate and research bundle exist, creates a `GraphEvent`, and sends the graph payload through the Neo4j boundary.
-
-### 5. Rank
-
-`rank` returns candidate instruments with scores, timing windows, matched entities, relationship paths, and short reasons.
-
-### 6. Explain
-
-`explain` writes a memo artifact and prints memo text that separates confirmed facts, graph implications, and analyst inference.
-
-## Why SQLite And Neo4j Both Exist
-
-SQLite and Neo4j do different jobs.
-
-- SQLite is better for canonical local records, deterministic tests, and simple state lookup across the whole pipeline.
-- Neo4j is better for explicit relationship paths and spillover reasoning.
-
-The system does not force every object into the graph. That is intentional.
+- **stdio** remains the default local/agent integration surface
+- **HTTP** is an MVP convenience transport for trusted environments only
+- schema shape, capability surface, and core error model must remain transport-parity compatible
 
 ## Trust And Provenance Model
 
 The architecture deliberately separates:
 
-- source capture
-- normalization
-- research and evidence
-- graph reasoning
-- narrative output
+- owner identity
+- actor identity
+- capture of facts/actions/artifacts
+- derived interpretation
+- confidence-labeled inference
+- correction/redaction policy
 
-That separation makes it easier to see when a conclusion is supported, when it is inferred, and where the chain breaks if the result is weak.
+That separation makes it easier to show what is observed, what is inferred, what changed later, and what should no longer be repeated.
 
-## Current Limitations
+## Current Implementation Notes
 
-- Connectors are still lightweight. `web` returns stub public-web results and `premium` is currently a placeholder.
-- Graph ingest is a thin contract, not a full production graph ingestion engine.
-- Ranking is deterministic and not calibrated from live market outcomes.
-- Memo generation is template-driven and not yet deeply evidence-span aware.
+Today the repo still contains V1-oriented models, services, SQLite state, Neo4j graph logic, and memo artifacts. Those components are brownfield inputs to the rewrite, not the final V2 architecture contract.
 
 ## Read Next
 
 - Landing page: [`../../README.md`](../../README.md)
 - Product context: [`../overview/product.md`](../overview/product.md)
 - Local setup: [`../runbooks/operator-guide.md`](../runbooks/operator-guide.md)
-- Workflow usage: [`../runbooks/analyst-agent-guide.md`](../runbooks/analyst-agent-guide.md)
+- Brownfield workflow usage: [`../runbooks/analyst-agent-guide.md`](../runbooks/analyst-agent-guide.md)

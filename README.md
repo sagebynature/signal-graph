@@ -1,61 +1,60 @@
 # Signal Graph
 
-`Signal Graph` is a CLI-first, provenance-aware trading research toolkit for turning raw market events into explainable trade candidates.
+`Signal Graph` is being rewritten as a local, provenance-aware **memory and decision-support system** for humans and AI tools.
 
-It also now includes a **v1 agent signal journal** flow for capturing user signals, agent action artifacts, and external reference signals with lossless provenance and recall-friendly markdown artifacts.
+The favored V2 direction keeps the CLI/MCP operating model but shifts the product center from event-driven trading research to **owner-scoped memory capture, retrieval, explanation, correction, and artifact recall**. The current repository still contains the V1 trading-research workflow while the V2 rewrite is being built inside this repo.
 
-It is built for a workflow where an analyst or coding agent:
+V2 is designed for a workflow where a person and one or more AI actors:
 
-1. collects or submits an event,
-2. normalizes it into a canonical event candidate,
-3. adds supporting research and provenance,
-4. ingests the event into a graph reasoning layer,
-5. ranks likely trade expressions, and
-6. writes a memo that distinguishes fact, graph implication, and inference.
+1. establish owner and actor identity,
+2. capture hooks, shared artifacts, and session context,
+3. preserve raw evidence canonically,
+4. derive graph-backed interpretations and explanations with confidence-labeled `why`,
+5. query prior decisions by who/topic/date, and
+6. record corrections or redactions with deterministic downstream effects.
 
-The first cut is intentionally terminal-native. It favors explicit commands, local state, deterministic artifacts, and machine-readable output over a dashboard-first experience.
+The product remains intentionally terminal-native. It favors explicit commands, local state, deterministic artifacts, and machine-readable output over a dashboard-first experience.
 
 ## What This Repo Is
 
-This repository implements the local operating surface for that workflow:
+This repository currently contains both the brownfield V1 runtime and the V2 rewrite track:
 
-- a `signal-graph` CLI
-- a local SQLite metadata store for pipeline state and provenance
-- a Neo4j runtime for graph-oriented reasoning
-- filesystem artifacts for cached material and memo output
-- runbooks and skill docs for human operators and coding agents
+- a `signal-graph` CLI and `signal-graph-mcp` entrypoint
+- local SQLite and Neo4j infrastructure used by the existing runtime
+- filesystem artifacts, integration examples, and runbooks for operators and coding agents
+- approved V2 rewrite plans, documentation, and ADRs that define the target memory-system shape
 
 ## Intended Users
 
-- Developers and operators who need to run or extend the local toolkit
-- Analysts who want a structured workflow for event-driven discretionary research
-- Coding agents that need a strict, auditable command order
-- Stakeholders who need to understand the product shape, decision model, and architecture
+- Developers and operators extending the local runtime
+- Humans who want a trustworthy memory layer for AI-assisted work
+- AI tools that need a strict, auditable capture/retrieval contract
+- Stakeholders validating the V2 product direction, storage model, and trust boundaries
 
 ## Core Use Cases
 
-- Capture a breaking event from a manual note, a public source, or a structured feed
-- Capture a user or agent-generated signal with actor/session provenance
-- Normalize duplicate or noisy raw inputs into a single event candidate
-- Record the evidence used to support or challenge an event hypothesis
-- Ingest an event into a relationship graph to reason about spillover paths
-- Rank likely equities or ETFs for immediate or short-drift reaction windows
-- Produce a memo with explicit provenance boundaries
-- Recall journaled signals through a CLI-first, MCP-ready surface
+- Capture AI-tool hooks with explicit owner, actor, and session provenance
+- Preserve shared documents, folders, and other raw artifacts without mutating source truth
+- Query prior actions, decisions, and evidence by who, topic, or date
+- Explain why an action or recommendation happened with provenance and confidence labeling
+- Record corrections/redactions that deterministically change downstream retrieval behavior
+- Continue operating the legacy V1 event-to-thesis workflow while the rewrite is in flight
 
 ## Workflow
 
-The canonical pipeline is:
+The V2 canonical loop is:
+
+`owner/actor setup -> hook/share/capture -> append-only event + raw artifact storage -> projection/indexing -> query/explain -> correction/redaction`
+
+The important operating rule is that Signal Graph should preserve **who / what / when / where** by default and only persist **why** when it is explicit or clearly labeled as inference.
+
+The brownfield V1 workflow that still ships in this repo is:
 
 `fetch` or `submit` -> `normalize` -> `research` -> `ingest` -> `rank` -> `explain`
 
-The important operating rule is that `research` is the provenance checkpoint. Downstream ranking or explanation claims should not outrun stored evidence.
-
-The journal pipeline is:
+The journal pipeline remains available while the rewrite proceeds:
 
 `capture-signal` -> `journalize-signal` -> `recall-signal`
-
-The important operating rule is that Signal Graph should preserve **who / what / when / where** and only record **why** when intent is explicit or clearly labeled as inference.
 
 Stage 2 recall now supports:
 - quoted exact phrases, for example `--query '"deployment checklist"'`
@@ -63,7 +62,7 @@ Stage 2 recall now supports:
 - multiple recall views via `--view ranked|timeline|session`
 - richer explanation payloads describing why each match ranked where it did
 
-For MCP clients, the repo also ships an stdio server surface:
+For MCP clients, the repo already ships an stdio server surface:
 
 ```bash
 uv run signal-graph mcp-server
@@ -215,10 +214,10 @@ Use the full example file at `docs/examples/scoring-policy.example.toml` as the 
 Start with [`docs/README.md`](docs/README.md) for the full documentation guide.
 
 - Stakeholder or product reader: [`docs/overview/product.md`](docs/overview/product.md)
+- Architecture reader: [`docs/architecture/system-overview.md`](docs/architecture/system-overview.md)
 - Local developer or operator: [`docs/runbooks/operator-guide.md`](docs/runbooks/operator-guide.md)
 - Analyst or coding agent user: [`docs/runbooks/analyst-agent-guide.md`](docs/runbooks/analyst-agent-guide.md)
 - Runnable onboarding and smoke test: [`docs/runbooks/runnable-smoke-test.md`](docs/runbooks/runnable-smoke-test.md)
-- Architecture reader: [`docs/architecture/system-overview.md`](docs/architecture/system-overview.md)
 - Reusable prompt templates: [`docs/prompts/signal-graph-analyst-prompt-pack.md`](docs/prompts/signal-graph-analyst-prompt-pack.md)
 
 Decision records:
@@ -226,6 +225,11 @@ Decision records:
 - [`docs/adr/ADR-0001-cli-first-provenance-workflow.md`](docs/adr/ADR-0001-cli-first-provenance-workflow.md)
 - [`docs/adr/ADR-0002-sqlite-plus-neo4j-separation.md`](docs/adr/ADR-0002-sqlite-plus-neo4j-separation.md)
 - [`docs/adr/ADR-0003-agent-skill-and-command-order.md`](docs/adr/ADR-0003-agent-skill-and-command-order.md)
+- [`docs/adr/ADR-0004-v2-memory-ontology.md`](docs/adr/ADR-0004-v2-memory-ontology.md)
+- [`docs/adr/ADR-0005-v2-storage-of-record-split.md`](docs/adr/ADR-0005-v2-storage-of-record-split.md)
+- [`docs/adr/ADR-0006-v2-mcp-transport-parity.md`](docs/adr/ADR-0006-v2-mcp-transport-parity.md)
+- [`docs/adr/ADR-0007-v2-hook-ingestion-envelope.md`](docs/adr/ADR-0007-v2-hook-ingestion-envelope.md)
+- [`docs/adr/ADR-0008-v2-http-trusted-environment-boundary.md`](docs/adr/ADR-0008-v2-http-trusted-environment-boundary.md)
 
 Legacy plan and design material:
 
@@ -238,27 +242,21 @@ Older planning documents may still refer to `trade-graph`; they describe the sam
 
 The repository currently provides:
 
-- local CLI commands for `doctor`, `init`, `submit`, `fetch`, `normalize`, `research`, `ingest`, `rank`, and `explain`
-- a deterministic local test path for the manual event flow
-- persisted `fetch` and `submit` intake into SQLite under `.signal-graph/signal_graph.db`
-- structured research bundles with stored support URLs, contradictions, evidence spans, and confidence
-- a Neo4j-backed graph ingest path with an explicit demo reference-graph seed step
-- graph-based ranking that returns only tradable instrument candidates with path-aware reasons such as direct equity exposure, ETF holdings, and supplier spillover
-- memo generation that cites stored evidence and separates confirmed fact, graph implication, and assistant inference
-- journal signal capture for user signals, agent action artifacts, and external references
-- journal graph-path shaping across `who / what / when / where / why / how`
-- recall artifact generation that writes markdown plus structured CLI JSON for agent consumption
-- MCP tool surface for capture, journalize, recall, and filtered signal listing
+- the existing V1 local CLI commands for `doctor`, `init`, `submit`, `fetch`, `normalize`, `research`, `ingest`, `rank`, and `explain`
+- journal signal capture plus MCP-backed recall commands for preserving user/agent provenance
+- an stdio MCP surface today, with HTTP parity tracked as a V2 rewrite deliverable
+- approved V2 docs and ADRs for the owner/actor ontology, storage-of-record split, hook event envelope, transport parity, and trusted-environment HTTP boundary
+- a brownfield integration base for moving from trading-research workflows toward owner-scoped memory and decision support
 
-This is not yet a production trading system. It is a structured local research toolkit and integration base.
+This is **not yet** the finished V2 memory system. It is the active rewrite workspace plus the still-operational V1 runtime.
 
 ## Non-Goals For This Cut
 
-- automated execution or order routing
-- real-time production-grade market data ingestion
-- fully calibrated ranking models
-- a dashboard or browser UI as the primary interface
-- autonomous claims that bypass stored provenance
+- automated execution or brokerage integration
+- public multi-tenant SaaS hosting for the HTTP transport
+- opaque recommendation generation that bypasses stored provenance
+- silent capture of inferred preferences or corrective rules without confirmation
+- mutating raw artifact truth in order to revise derived interpretations
 
 ## Development Verification
 
