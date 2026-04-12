@@ -25,3 +25,4 @@ graphify-out/
 
 # Core dumps
 core.*
+.omx/
