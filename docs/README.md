@@ -10,6 +10,7 @@ Use this page to choose the right starting point.
 - Architecture and storage model: go to [`architecture/system-overview.md`](architecture/system-overview.md)
 - Local setup and troubleshooting: go to [`runbooks/operator-guide.md`](runbooks/operator-guide.md)
 - Research workflow for analysts or agents: go to [`runbooks/analyst-agent-guide.md`](runbooks/analyst-agent-guide.md)
+- MCP host validation and examples: go to [`integrations/README.md`](integrations/README.md)
 - Reusable prompt templates: go to [`prompts/signal-graph-analyst-prompt-pack.md`](prompts/signal-graph-analyst-prompt-pack.md)
 
 ## How The Docs Are Organized

@@ -1,0 +1,87 @@
+{
+  "version": "2026-04-12",
+  "hosts": [
+    {
+      "host": "Claude Code",
+      "status": "validated",
+      "transport": "stdio",
+      "config_location": "Claude Code local/project MCP configuration",
+      "config_example_path": "docs/examples/mcp/claude-code-local.json",
+      "evidence_path": "docs/integrations/evidence/claude-code-2026-04-12.md",
+      "validation_date": "2026-04-12",
+      "revalidation_policy": "Revalidate when Signal Graph MCP entrypoints or Claude Code MCP docs change.",
+      "proof_path": [
+        "local config registration accepted by Claude Code",
+        "host list/get health checks show the configured stdio server",
+        "Signal Graph stdio protocol smoke proves initialize, tools/list, and a named tool call against the same server runtime"
+      ],
+      "known_limitations": [
+        "Host validation currently relies on local CLI/config evidence rather than broader multi-platform coverage."
+      ],
+      "source_refs": [
+        "https://code.claude.com/docs/en/mcp"
+      ]
+    },
+    {
+      "host": "Codex CLI",
+      "status": "validated",
+      "transport": "stdio",
+      "config_location": "Codex CLI MCP configuration via `codex mcp add`",
+      "config_example_path": "docs/examples/mcp/codex-cli.md",
+      "evidence_path": "docs/integrations/evidence/codex-cli-2026-04-12.md",
+      "validation_date": "2026-04-12",
+      "revalidation_policy": "Revalidate when Signal Graph MCP entrypoints or Codex MCP command surface changes.",
+      "proof_path": [
+        "MCP server registration via `codex mcp add`",
+        "MCP config inspection via `codex mcp list` and `codex mcp get`",
+        "Signal Graph stdio protocol smoke proves initialize, tools/list, and a named tool call against the same server runtime"
+      ],
+      "known_limitations": [
+        "Validation is bounded to locally available Codex CLI flows, not every OpenAI host surface."
+      ],
+      "source_refs": [
+        "local: codex mcp add/list/get --help"
+      ]
+    },
+    {
+      "host": "Cursor",
+      "status": "example-only",
+      "transport": "stdio",
+      "config_location": ".cursor/mcp.json or host-level MCP config",
+      "config_example_path": "docs/examples/mcp/cursor-mcp.json",
+      "evidence_path": "docs/integrations/evidence/cursor-example-2026-04-12.md",
+      "validation_date": "2026-04-12",
+      "revalidation_policy": "Promote to validated only after a real host proof run is captured.",
+      "proof_path": [
+        "example derived from current documented MCP config style",
+        "not yet validated end-to-end in a real Cursor host session"
+      ],
+      "known_limitations": [
+        "Example-only; do not treat as validated support."
+      ],
+      "source_refs": [
+        "https://cursor.com/docs/mcp"
+      ]
+    },
+    {
+      "host": "Claude Desktop",
+      "status": "deferred",
+      "transport": "stdio",
+      "config_location": "~/.claude/claude_desktop_config.json",
+      "config_example_path": "docs/examples/mcp/claude-desktop.json",
+      "evidence_path": "docs/integrations/evidence/claude-desktop-deferred-2026-04-12.md",
+      "validation_date": "2026-04-12",
+      "revalidation_policy": "Validate on macOS or WSL before promoting beyond deferred.",
+      "proof_path": [
+        "deferred because this Linux environment cannot exercise Claude Desktop import/host flow",
+        "retain example shape only until a supported environment is available"
+      ],
+      "known_limitations": [
+        "Current host validation command reports Claude Desktop import is only supported on macOS and WSL."
+      ],
+      "source_refs": [
+        "local: claude mcp add-from-claude-desktop --help"
+      ]
+    }
+  ]
+}

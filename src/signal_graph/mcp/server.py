@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -182,30 +183,30 @@ def serve_stdio(
     store_path: Path | None = None,
     artifact_dir: Path | None = None,
 ) -> None:
-    for raw_line in sys.stdin:
-        line = raw_line.strip()
-        if not line:
-            continue
+    stdin = sys.stdin.buffer
+    stdout = sys.stdout.buffer
+    while True:
+        message = _read_stdio_message(stdin)
+        if message is None:
+            break
         try:
-            message = json.loads(line)
-        except json.JSONDecodeError as exc:
-            response = _jsonrpc_error(None, -32700, f"Parse error: {exc}")
-        else:
             response = handle_message(
                 message,
                 store_path=store_path,
                 artifact_dir=artifact_dir,
             )
+        except Exception as exc:  # noqa: BLE001
+            response = _jsonrpc_error(message.get("id"), -32603, f"Server error: {exc}")
         if response is None:
             continue
-        sys.stdout.write(json.dumps(response) + "\n")
-        sys.stdout.flush()
+        _write_stdio_message(stdout, response)
 
 
 def main() -> None:
-    store = SqliteStore(DEFAULT_PROJECT_DIR / "signal_graph.db")
+    store_path, artifact_dir = _resolve_runtime_paths()
+    store = SqliteStore(store_path)
     store.init_db()
-    serve_stdio()
+    serve_stdio(store_path=store_path, artifact_dir=artifact_dir)
 
 
 def _handle_tool_call(
@@ -336,3 +337,43 @@ def _string_list(value: Any) -> list[str]:
     if isinstance(value, list):
         return [str(item) for item in value]
     return [str(value)]
+
+
+def _read_stdio_message(stream) -> dict[str, Any] | None:
+    content_length: int | None = None
+    while True:
+        line = stream.readline()
+        if line == b"":
+            return None
+        if line in {b"\r\n", b"\n"}:
+            break
+        decoded = line.decode("utf-8").strip()
+        if not decoded:
+            continue
+        key, _, value = decoded.partition(":")
+        if key.lower() == "content-length":
+            content_length = int(value.strip())
+    if content_length is None:
+        raise ValueError("missing Content-Length header")
+    payload = stream.read(content_length)
+    if not payload:
+        return None
+    return json.loads(payload.decode("utf-8"))
+
+
+def _write_stdio_message(stream, payload: dict[str, Any]) -> None:
+    body = json.dumps(payload).encode("utf-8")
+    header = f"Content-Length: {len(body)}\r\n\r\n".encode("utf-8")
+    stream.write(header)
+    stream.write(body)
+    stream.flush()
+
+
+def _resolve_runtime_paths() -> tuple[Path, Path]:
+    project_root = Path(os.getenv("SIGNAL_GRAPH_PROJECT_DIR", ".")).resolve()
+    state_dir = project_root / DEFAULT_PROJECT_DIR
+    return state_dir / "signal_graph.db", state_dir / "artifacts"
+
+
+if __name__ == "__main__":
+    main()

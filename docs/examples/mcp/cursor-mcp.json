@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "signal-graph": {
+      "command": "/home/sachoi/signal-graph/.venv/bin/python",
+      "args": [
+        "-m",
+        "signal_graph.mcp.server"
+      ],
+      "env": {
+        "SIGNAL_GRAPH_PROJECT_DIR": "/path/to/your/project"
+      }
+    }
+  }
+}
