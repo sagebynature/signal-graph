@@ -6,6 +6,11 @@ from signal_graph.models.bootstrap import (
     BootstrapMcpContract,
     BootstrapStep,
 )
+from signal_graph.models.automation import (
+    AutomationArtifact,
+    HostAutomationFlow,
+    OperationalAutomationContract,
+)
 from signal_graph.models.events import EventCandidate
 from signal_graph.models.graph import MemoResponse, RankedCandidate, GraphEvent
 from signal_graph.models.journal import (
@@ -25,6 +30,9 @@ __all__ = [
     "BootstrapContract",
     "BootstrapMcpContract",
     "BootstrapStep",
+    "AutomationArtifact",
+    "HostAutomationFlow",
+    "OperationalAutomationContract",
     "EventCandidate",
     "GraphEvent",
     "JournalSignal",

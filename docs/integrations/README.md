@@ -20,6 +20,15 @@ This directory tracks evidence-backed MCP host compatibility for Signal Graph.
 - example-only: **Cursor**
 - deferred: **Claude Desktop** until a supported validation environment is available
 
+## Operational automation
+
+Validated hosts are also the only hosts eligible for first-wave operational automation:
+
+- `signal-graph automation-describe`
+- `signal-graph integration-install --host <validated-host>`
+- `signal-graph integration-audit --host <validated-host> --json`
+- `signal-graph integration-uninstall --host <validated-host>`
+
 ## Runtime contract dependency
 
 All host examples and validation claims must wrap the same Signal Graph runtime contract:

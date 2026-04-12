@@ -101,6 +101,21 @@ This returns a versioned machine-readable contract with:
 - MCP startup assumptions
 - next recommended actions
 
+### Agent Operational Automation
+
+For validated hosts, Signal Graph can also describe and manage operational automation workflows:
+
+```bash
+uv run signal-graph automation-describe
+uv run signal-graph integration-install --host claude-code
+uv run signal-graph integration-audit --host claude-code --json
+uv run signal-graph integration-uninstall --host claude-code
+```
+
+The first wave is intentionally limited to validated hosts only:
+- `claude-code`
+- `codex-cli`
+
 ### Local Neo4j
 
 - Set `NEO4J_AUTH` before the first `make neo4j-up` if you want a non-default `neo4j/<password>` credential.

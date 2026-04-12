@@ -40,6 +40,19 @@ uv run signal-graph mcp-server
 uv run signal-graph-mcp
 ```
 
+## Operational Automation
+
+For validated hosts, use the runtime-owned automation contract and host workflows:
+
+```bash
+uv run signal-graph automation-describe
+uv run signal-graph integration-install --host claude-code
+uv run signal-graph integration-audit --host claude-code --json
+uv run signal-graph integration-uninstall --host claude-code
+```
+
+Operational automation is intentionally limited to validated hosts in the first wave.
+
 ## Neo4j Runtime
 
 Before first startup, set `NEO4J_AUTH` if you do not want the default `neo4j/<password>` credential.

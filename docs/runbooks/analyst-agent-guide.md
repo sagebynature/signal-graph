@@ -37,6 +37,7 @@ Agent bootstrap tip:
 - start with `uv run signal-graph bootstrap-describe`
 - follow the documented smoke path in order
 - after a green smoke path, the next actions should come from the contract output rather than scraped prose
+- for validated hosts, prefer `automation-describe` plus `integration-install` / `integration-audit`
 
 ## When To Use Which Entry Point
 

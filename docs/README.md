@@ -11,6 +11,7 @@ Use this page to choose the right starting point.
 - Local setup and troubleshooting: go to [`runbooks/operator-guide.md`](runbooks/operator-guide.md)
 - Research workflow for analysts or agents: go to [`runbooks/analyst-agent-guide.md`](runbooks/analyst-agent-guide.md)
 - MCP host validation and examples: go to [`integrations/README.md`](integrations/README.md)
+- Operational automation for validated hosts: see runtime command `signal-graph automation-describe`
 - Reusable prompt templates: go to [`prompts/signal-graph-analyst-prompt-pack.md`](prompts/signal-graph-analyst-prompt-pack.md)
 
 ## How The Docs Are Organized

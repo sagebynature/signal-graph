@@ -9,6 +9,7 @@ from typing import ParamSpec
 from neo4j.exceptions import DriverError, Neo4jError
 import typer
 
+from signal_graph.cli.automation_describe import automation_describe
 from signal_graph.cli.bootstrap_describe import bootstrap_describe
 from signal_graph.cli.doctor import doctor
 from signal_graph.cli.capture_signal import capture_signal
@@ -16,6 +17,9 @@ from signal_graph.cli.explain import explain
 from signal_graph.cli.fetch import fetch
 from signal_graph.cli.ingest import ingest
 from signal_graph.cli.init import init
+from signal_graph.cli.integration_audit import integration_audit
+from signal_graph.cli.integration_install import integration_install
+from signal_graph.cli.integration_uninstall import integration_uninstall
 from signal_graph.cli.journalize_signal import journalize_signal
 from signal_graph.cli.mcp_server import mcp_server
 from signal_graph.cli.normalize import normalize
@@ -91,6 +95,9 @@ def _guard_command(
 
 
 app.command()(doctor)
+app.command("automation-describe")(
+    _guard_command(automation_describe, requires_initialized_project=True)
+)
 app.command("bootstrap-describe")(bootstrap_describe)
 app.command("capture-signal")(
     _guard_command(capture_signal, requires_initialized_project=True)
@@ -99,6 +106,15 @@ app.command()(_guard_command(explain, requires_initialized_project=True))
 app.command()(fetch)
 app.command()(_guard_command(ingest, requires_initialized_project=True))
 app.command()(init)
+app.command("integration-audit")(
+    _guard_command(integration_audit, requires_initialized_project=True)
+)
+app.command("integration-install")(
+    _guard_command(integration_install, requires_initialized_project=True)
+)
+app.command("integration-uninstall")(
+    _guard_command(integration_uninstall, requires_initialized_project=True)
+)
 app.command("journalize-signal")(
     _guard_command(journalize_signal, requires_initialized_project=True)
 )
