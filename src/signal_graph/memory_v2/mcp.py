@@ -19,6 +19,10 @@ def build_tool_definitions() -> list[dict[str, Any]]:
             "name": "memory_correct",
             "description": "Record a correction/redaction-style instruction.",
         },
+        {
+            "name": "memory_redact",
+            "description": "Redact a target from query and explanation results.",
+        },
     ]
 
 
@@ -76,7 +80,12 @@ def handle_http_request(
         return {"status": 403, "body": {"error": "owner_scope_mismatch"}}
     tool_name = path.removeprefix("/tools/")
     arguments = dict(body)
-    if tool_name in {"memory_query", "memory_explain", "memory_correct"}:
+    if tool_name in {
+        "memory_query",
+        "memory_explain",
+        "memory_correct",
+        "memory_redact",
+    }:
         arguments["owner_email"] = scope_owner
     return {"status": 200, "body": _dispatch_tool(tool_name, arguments, service)}
 
@@ -95,6 +104,8 @@ def _dispatch_tool(
             result = service.explain_action(**arguments)
     elif tool_name == "memory_correct":
         result = service.record_correction(**arguments)
+    elif tool_name == "memory_redact":
+        result = service.record_redaction(**arguments)
     else:
         raise ValueError(f"unknown tool: {tool_name}")
     return result.model_dump(mode="json")

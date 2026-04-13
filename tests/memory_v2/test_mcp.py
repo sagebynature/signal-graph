@@ -53,7 +53,12 @@ def test_stdio_and_http_transports_have_capability_parity(tmp_path):
         service=service,
     )
     tool_names = {tool["name"] for tool in tools["result"]["tools"]}
-    assert {"memory_query", "memory_explain", "memory_correct"} <= tool_names
+    assert {
+        "memory_query",
+        "memory_explain",
+        "memory_correct",
+        "memory_redact",
+    } <= tool_names
 
     stdio_query = handle_stdio_message(
         {
@@ -129,6 +134,35 @@ def test_stdio_and_http_transports_have_capability_parity(tmp_path):
         service=service,
     )
     assert stdio_correct["result"]["structuredContent"] == http_correct["body"]
+
+    stdio_redact = handle_stdio_message(
+        {
+            "jsonrpc": "2.0",
+            "id": 6,
+            "method": "tools/call",
+            "params": {
+                "name": "memory_redact",
+                "arguments": {
+                    "owner_email": "sage@example.com",
+                    "target_id": decision_event_id,
+                    "reason": "contains sensitive decision details",
+                },
+            },
+        },
+        service=service,
+    )
+    http_redact = handle_http_request(
+        "POST",
+        "/tools/memory_redact",
+        {
+            "owner_email": "sage@example.com",
+            "target_id": decision_event_id,
+            "reason": "contains sensitive decision details",
+        },
+        owner_email="sage@example.com",
+        service=service,
+    )
+    assert stdio_redact["result"]["structuredContent"] == http_redact["body"]
 
 
 def test_http_boundary_requires_owner_scope_and_blocks_mismatches(tmp_path):

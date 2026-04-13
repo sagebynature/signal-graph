@@ -9,6 +9,7 @@ from signal_graph.memory_v2.models import (
     Correction,
     MemoryEvent,
     Owner,
+    Redaction,
 )
 
 
@@ -139,5 +140,29 @@ def correction_projection_statements(
             "MATCH (correction:MemoryCorrection {correction_id: $correction_id}) "
             "MERGE (owner)-[:ISSUED]->(correction)",
             {"owner_id": owner.owner_id, "correction_id": correction.correction_id},
+        ),
+    ]
+
+
+def redaction_projection_statements(
+    *, owner: Owner, redaction: Redaction
+) -> list[Statement]:
+    return [
+        (
+            "MERGE (redaction:MemoryRedaction {redaction_id: $redaction_id}) "
+            "SET redaction.target_id = $target_id, redaction.reason = $reason, "
+            "redaction.created_at = $created_at",
+            {
+                "redaction_id": redaction.redaction_id,
+                "target_id": redaction.target_id,
+                "reason": redaction.reason,
+                "created_at": redaction.created_at.isoformat(),
+            },
+        ),
+        (
+            "MATCH (owner:MemoryOwner {owner_id: $owner_id}) "
+            "MATCH (redaction:MemoryRedaction {redaction_id: $redaction_id}) "
+            "MERGE (owner)-[:ISSUED]->(redaction)",
+            {"owner_id": owner.owner_id, "redaction_id": redaction.redaction_id},
         ),
     ]

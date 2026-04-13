@@ -94,6 +94,14 @@ class Correction(BaseModel):
     created_at: datetime
 
 
+class Redaction(BaseModel):
+    redaction_id: str
+    owner_id: str
+    target_id: str
+    reason: str
+    created_at: datetime
+
+
 class QueryResult(BaseModel):
     owner: Owner
     topic: str | None = None
@@ -103,6 +111,7 @@ class QueryResult(BaseModel):
     derived_interpretations: list[DerivedInterpretation] = Field(default_factory=list)
     guidance: list[str] = Field(default_factory=list)
     applied_corrections: list[Correction] = Field(default_factory=list)
+    applied_redactions: list[Redaction] = Field(default_factory=list)
 
 
 class ExplanationActor(BaseModel):
@@ -120,4 +129,6 @@ class ExplanationResponse(BaseModel):
     evidence_refs: list[str] = Field(default_factory=list)
     why_inference: WhyInference | None = None
     active_corrections: list[Correction] = Field(default_factory=list)
+    active_redactions: list[Redaction] = Field(default_factory=list)
     guidance: list[str] = Field(default_factory=list)
+    is_redacted: bool = False

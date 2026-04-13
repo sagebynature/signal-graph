@@ -17,6 +17,7 @@ from signal_graph.memory_v2.models import (
     Owner,
     PendingWhy,
     QueryResult,
+    Redaction,
     WhyInference,
 )
 from signal_graph.memory_v2.graph import (
@@ -25,6 +26,7 @@ from signal_graph.memory_v2.graph import (
     artifact_projection_statements,
     correction_projection_statements,
     event_projection_statements,
+    redaction_projection_statements,
 )
 from signal_graph.memory_v2.store import FileMemoryStore
 
@@ -260,6 +262,34 @@ class MemoryService:
         )
         return saved
 
+    def record_redaction(
+        self,
+        *,
+        owner_email: str,
+        target_id: str,
+        reason: str,
+    ) -> Redaction:
+        owner = self.get_owner_by_email(owner_email)
+        for existing in self.store.list_redactions():
+            if (
+                existing.owner_id == owner.owner_id
+                and existing.target_id == target_id
+                and existing.reason == reason
+            ):
+                return existing
+        redaction = Redaction(
+            redaction_id=self._new_id("redaction"),
+            owner_id=owner.owner_id,
+            target_id=target_id,
+            reason=reason,
+            created_at=self._now(),
+        )
+        saved = self.store.save_redaction(redaction)
+        self.graph_boundary.project(
+            redaction_projection_statements(owner=owner, redaction=saved)
+        )
+        return saved
+
     def query(
         self,
         *,
@@ -268,25 +298,55 @@ class MemoryService:
         on_date: date | None = None,
     ) -> QueryResult:
         owner = self.get_owner_by_email(owner_email)
-        events = [
+        event_candidates = [
             event
             for event in self.store.list_events()
             if event.owner_id == owner.owner_id
             and self._event_matches(event, topic, on_date)
         ]
-        artifacts = [
+        artifact_candidates = [
             artifact
             for artifact in self.store.list_artifacts()
             if artifact.owner_id == owner.owner_id
             and self._topic_matches(artifact.topic_refs, topic)
         ]
         corrections = self._matching_corrections(owner.owner_id, topic=topic)
-        derived = [
+        derived_candidates = [
             item
             for item in self.store.list_derived()
             if item.owner_id == owner.owner_id
             and self._topic_matches(item.topics, topic)
             and not self._is_corrected(item.interpretation_id, item.topics, corrections)
+        ]
+        relevant_target_ids = {event.event_id for event in event_candidates}
+        relevant_target_ids.update(
+            artifact.artifact_id for artifact in artifact_candidates
+        )
+        relevant_target_ids.update(
+            item.interpretation_id for item in derived_candidates
+        )
+        redactions = [
+            redaction
+            for redaction in self._matching_redactions(owner.owner_id)
+            if redaction.target_id in relevant_target_ids
+        ]
+        events = [
+            event
+            for event in event_candidates
+            if not self._is_redacted(event.event_id, redactions)
+        ]
+        artifacts = [
+            artifact
+            for artifact in artifact_candidates
+            if not self._is_redacted(artifact.artifact_id, redactions)
+        ]
+        derived = [
+            item
+            for item in derived_candidates
+            if not self._is_redacted(item.interpretation_id, redactions)
+        ]
+        redaction_guidance = [
+            f"Redacted: {redaction.reason}" for redaction in redactions
         ]
         return QueryResult(
             owner=owner,
@@ -295,8 +355,10 @@ class MemoryService:
             events=sorted(events, key=lambda event: event.occurred_at),
             artifacts=sorted(artifacts, key=lambda artifact: artifact.shared_at),
             derived_interpretations=sorted(derived, key=lambda item: item.created_at),
-            guidance=[correction.instruction for correction in corrections],
+            guidance=redaction_guidance
+            + [correction.instruction for correction in corrections],
             applied_corrections=corrections,
+            applied_redactions=redactions,
         )
 
     def explain_action(self, event_id: str) -> ExplanationResponse:
@@ -307,11 +369,30 @@ class MemoryService:
         actor = self.store.get_actor(event.actor_id)
         if owner is None or actor is None:
             raise ValueError("event owner/actor linkage is incomplete")
+        redactions = self._matching_redactions(owner.owner_id, target_id=event.event_id)
         corrections = self._matching_corrections(
             owner.owner_id,
             topic=event.topic_refs[0] if event.topic_refs else None,
             target_id=event.event_id,
         )
+        if redactions:
+            return ExplanationResponse(
+                owner=owner,
+                actor=ExplanationActor(
+                    actor_id=actor.actor_id,
+                    runtime_family=actor.runtime_family,
+                    host=actor.host,
+                    session_id=actor.session_id,
+                ),
+                action_text="[redacted]",
+                provenance_chain=[],
+                evidence_refs=[],
+                why_inference=None,
+                active_corrections=[],
+                active_redactions=redactions,
+                guidance=[f"Redacted: {redaction.reason}" for redaction in redactions],
+                is_redacted=True,
+            )
         return ExplanationResponse(
             owner=owner,
             actor=ExplanationActor(
@@ -325,6 +406,7 @@ class MemoryService:
             evidence_refs=event.evidence_refs,
             why_inference=event.why_inference,
             active_corrections=corrections,
+            active_redactions=[],
             guidance=[correction.instruction for correction in corrections],
         )
 
@@ -387,6 +469,22 @@ class MemoryService:
             )
         ]
 
+    def _matching_redactions(
+        self,
+        owner_id: str,
+        *,
+        target_id: str | None = None,
+    ) -> list[Redaction]:
+        return [
+            redaction
+            for redaction in sorted(
+                self.store.list_redactions(),
+                key=lambda item: item.created_at,
+            )
+            if redaction.owner_id == owner_id
+            and (target_id is None or redaction.target_id == target_id)
+        ]
+
     @staticmethod
     def _is_corrected(
         interpretation_id: str,
@@ -398,6 +496,10 @@ class MemoryService:
             or (correction.topic is not None and correction.topic in topics)
             for correction in corrections
         )
+
+    @staticmethod
+    def _is_redacted(target_id: str, redactions: list[Redaction]) -> bool:
+        return any(redaction.target_id == target_id for redaction in redactions)
 
     @staticmethod
     def _topic_matches(topic_refs: list[str], topic: str | None) -> bool:

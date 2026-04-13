@@ -12,6 +12,7 @@ from signal_graph.memory_v2.models import (
     DerivedInterpretation,
     MemoryEvent,
     Owner,
+    Redaction,
 )
 
 
@@ -25,6 +26,7 @@ class FileMemoryStore:
         self._artifacts: dict[str, ArtifactShare] = {}
         self._derived: dict[str, DerivedInterpretation] = {}
         self._corrections: dict[str, Correction] = {}
+        self._redactions: dict[str, Redaction] = {}
         self._ensure_layout()
 
     def describe_layout(self) -> dict[str, str]:
@@ -38,6 +40,7 @@ class FileMemoryStore:
             "artifacts_meta": str(self.root / "artifacts" / "shares"),
             "derived": str(self.root / "derived"),
             "corrections": str(self.root / "corrections"),
+            "redactions": str(self.root / "redactions"),
             "views_markdown": str(self.root / "views" / "markdown"),
         }
 
@@ -114,6 +117,18 @@ class FileMemoryStore:
     def list_corrections(self) -> list[Correction]:
         return list(self._corrections.values())
 
+    def save_redaction(self, redaction: Redaction) -> Redaction:
+        self._redactions[redaction.redaction_id] = redaction
+        self._write_json(
+            "redactions",
+            redaction.redaction_id,
+            redaction.model_dump(mode="json"),
+        )
+        return redaction
+
+    def list_redactions(self) -> list[Redaction]:
+        return list(self._redactions.values())
+
     def copy_artifact(self, source_path: Path, artifact_id: str) -> tuple[str, str]:
         raw_dir = self.root / "artifacts" / "raw"
         raw_dir.mkdir(parents=True, exist_ok=True)
@@ -138,6 +153,7 @@ class FileMemoryStore:
             "artifacts/shares",
             "derived",
             "corrections",
+            "redactions",
             "views/markdown",
         ):
             (self.root / relative).mkdir(parents=True, exist_ok=True)
