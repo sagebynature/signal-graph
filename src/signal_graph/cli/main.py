@@ -11,25 +11,17 @@ import typer
 
 from signal_graph.cli.automation_describe import automation_describe
 from signal_graph.cli.bootstrap_describe import bootstrap_describe
-from signal_graph.cli.doctor import doctor
 from signal_graph.cli.capture_signal import capture_signal
-from signal_graph.cli.explain import explain
-from signal_graph.cli.fetch import fetch
-from signal_graph.cli.ingest import ingest
+from signal_graph.cli.doctor import doctor
 from signal_graph.cli.init import init
 from signal_graph.cli.integration_audit import integration_audit
 from signal_graph.cli.integration_install import integration_install
 from signal_graph.cli.integration_uninstall import integration_uninstall
 from signal_graph.cli.journalize_signal import journalize_signal
 from signal_graph.cli.mcp_server import mcp_server
-from signal_graph.cli.normalize import normalize
-from signal_graph.cli.rank import rank
 from signal_graph.cli.recall_signal import recall_signal
-from signal_graph.cli.research import research
-from signal_graph.cli.submit import submit
 from signal_graph.config import DEFAULT_PROJECT_DIR
 from signal_graph.storage.sqlite import SqliteStore
-
 
 app = typer.Typer(add_completion=False)
 P = ParamSpec("P")
@@ -42,6 +34,7 @@ _LOCAL_DATA_ERROR_MESSAGE = (
 _GRAPH_DB_ERROR_MESSAGE = (
     "Unable to reach the graph database. Check Neo4j settings and try again."
 )
+_REQUIRED_PROJECT_TABLES = ("journal_signals", "recall_artifacts")
 
 
 @app.callback()
@@ -65,7 +58,12 @@ def _ensure_project_initialized() -> None:
 
     try:
         store = SqliteStore(_PROJECT_DB_PATH)
-        if not store.table_exists("raw_source_items"):
+        missing = [
+            table_name
+            for table_name in _REQUIRED_PROJECT_TABLES
+            if not store.table_exists(table_name)
+        ]
+        if missing:
             _exit_command(_PROJECT_INIT_MESSAGE)
     except typer.Exit:
         raise
@@ -102,9 +100,6 @@ app.command("bootstrap-describe")(bootstrap_describe)
 app.command("capture-signal")(
     _guard_command(capture_signal, requires_initialized_project=True)
 )
-app.command()(_guard_command(explain, requires_initialized_project=True))
-app.command()(fetch)
-app.command()(_guard_command(ingest, requires_initialized_project=True))
 app.command()(init)
 app.command("integration-audit")(
     _guard_command(integration_audit, requires_initialized_project=True)
@@ -119,14 +114,9 @@ app.command("journalize-signal")(
     _guard_command(journalize_signal, requires_initialized_project=True)
 )
 app.command("mcp-server")(_guard_command(mcp_server, requires_initialized_project=True))
-app.command()(_guard_command(normalize, requires_initialized_project=True))
-app.command()(_guard_command(rank, requires_initialized_project=True))
 app.command("recall-signal")(
     _guard_command(recall_signal, requires_initialized_project=True)
 )
-app.command()(_guard_command(research, requires_initialized_project=True))
-app.command()(submit)
-
 
 if __name__ == "__main__":
     app()

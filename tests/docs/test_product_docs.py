@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 
-def test_top_level_docs_frame_v2_as_memory_and_decision_support():
+def test_top_level_docs_frame_current_memory_system_without_legacy_runtime_story():
     texts = {
         "readme": Path("README.md").read_text().lower(),
         "docs_index": Path("docs/README.md").read_text().lower(),
@@ -15,16 +15,16 @@ def test_top_level_docs_frame_v2_as_memory_and_decision_support():
 
     assert "memory and decision-support system" in texts["readme"]
     assert "memory and decision-support system" in texts["product"]
-    assert "v2" in texts["docs_index"]
-    assert "owner" in texts["architecture"]
-    assert "correction" in texts["architecture"]
-    assert "http" in texts["architecture"]
-    assert "stdio" in texts["architecture"]
-    assert "v1 trading-research workflow" in texts["readme"]
-    assert "superseded legacy lane" in texts["product"]
+    assert "bootstrap-describe" in texts["docs_index"]
+    assert "capture-signal" in texts["architecture"]
+    assert "journal_signals" in texts["architecture"]
+    assert "brownfield" not in texts["readme"]
+    assert "v1" not in texts["readme"]
+    assert "rewrite track" not in texts["readme"]
+    assert "superseded legacy lane" not in texts["product"]
 
 
-def test_required_v2_adrs_exist_and_cover_acceptance_topics():
+def test_required_adrs_exist_and_cover_current_acceptance_topics():
     expected = {
         "docs/adr/ADR-0004-v2-memory-ontology.md": (
             "owner",

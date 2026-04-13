@@ -6,7 +6,7 @@ Accepted
 
 ## Context
 
-The V1 event-to-thesis objects are too narrow for the rewrite. Signal Graph V2 needs to represent humans, AI actors, shared artifacts, later explanations, and corrective feedback without collapsing them into one generic event record.
+The earlier event-centric objects are too narrow for the current memory system. Signal Graph V2 needs to represent humans, AI actors, shared artifacts, later explanations, and corrective feedback without collapsing them into one generic event record.
 
 ## Decision Drivers
 
@@ -17,7 +17,7 @@ The V1 event-to-thesis objects are too narrow for the rewrite. Signal Graph V2 n
 
 ## Considered Options
 
-### Option 1: Extend The V1 Trading/Event Objects
+### Option 1: Extend The Earlier Event-Centric Objects
 
 - Pros: less near-term naming churn
 - Cons: wrong center of gravity, awkward fit for owners, shares, and corrections
@@ -58,7 +58,7 @@ Every AI actor action must link to a human owner. `WhyInference` remains optiona
 
 ### Negative
 
-- migration from V1 names requires explicit boundary work
+- migration from earlier event-centric names requires explicit boundary work
 - more record types means more documentation and test coverage
 
 ## Related Documents

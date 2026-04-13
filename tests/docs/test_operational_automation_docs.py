@@ -7,7 +7,7 @@ def test_operational_automation_docs_reference_runtime_commands():
     texts = {
         "readme": Path("README.md").read_text(),
         "operator": Path("docs/runbooks/operator-guide.md").read_text(),
-        "analyst": Path("docs/runbooks/analyst-agent-guide.md").read_text(),
+        "docs_index": Path("docs/README.md").read_text(),
         "integrations": Path("docs/integrations/README.md").read_text(),
     }
 

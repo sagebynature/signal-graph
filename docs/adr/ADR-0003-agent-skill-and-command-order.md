@@ -1,57 +1,49 @@
-# ADR-0003: Encode Agent Usage Through Skill Rules And Command Order
+# ADR-0003: Encode Agent Usage Through Bootstrap And Journal Workflow Contracts
 
 ## Status
-
 Accepted
 
 ## Context
 
-The repository is intended to be operated not only by humans but also by coding agents. Agents need more than API access; they need a safe workflow contract that says what order to run commands in, what artifacts matter, and where inference must stop.
+The repository is operated by humans and coding agents. Agents need more than API access; they need a safe workflow contract that says where runtime guidance lives, which commands are supported, and which artifacts prove the system is working.
 
 ## Decision Drivers
 
-- safe agent operation
-- predictable workflow execution
-- provenance discipline
-- low ambiguity in local automation
+- keep runtime instructions aligned with the supported CLI
+- make bootstrap and automation discovery explicit
+- preserve provenance guardrails for capture, journaling, and recall
 
 ## Considered Options
 
-### Option 1: Let Agents Infer Workflow From Source Code
+### Option 1: Let agents infer workflow from source code
+Rejected because command discovery and runtime contracts become inconsistent.
 
-- Pros: no extra documentation burden
-- Cons: unsafe, ambiguous, and likely to drift into unsupported shortcuts
+### Option 2: Put guidance only in README
+Rejected because bootstrap, automation, and MCP details drift too easily.
 
-### Option 2: Put Guidance Only In README
-
-- Pros: visible to humans
-- Cons: too broad, not explicit enough for agent operating rules
-
-### Option 3: Maintain A Dedicated Skill And Guide
-
-- Pros: explicit command order, provenance rules, agent-focused wording
-- Cons: another documentation artifact to maintain
+### Option 3: Maintain a dedicated skill and guide
+Accepted because the skill, README, and operator guide can point to the same supported surfaces.
 
 ## Decision
 
-Maintain explicit agent guidance through a dedicated skill document and an analyst/agent guide, with the canonical command order:
+Signal Graph documents and skill guidance will standardize on this order:
 
-`fetch` or `submit` -> `normalize` -> `research` -> `ingest` -> `rank` -> `explain`
+`doctor -> init -> bootstrap-describe / automation-describe -> capture-signal -> journalize-signal -> recall-signal -> mcp-server`
+
+The skill file and operator docs should reinforce supported runtime contracts rather than historical workflows.
 
 ## Consequences
 
 ### Positive
-
 - agents have a clear operating contract
-- provenance guardrails are easier to preserve
+- bootstrap and automation guidance stay aligned with CLI help
 - workflow drift becomes easier to detect in review
 
 ### Negative
-
-- documentation and code must stay aligned
-- future command surface changes require doc updates as part of normal development
+- documentation updates must stay coordinated across README, runbooks, and skill text
 
 ## Related Documents
 
-- `skills/signal-graph/SKILL.md`
-- `docs/runbooks/analyst-agent-guide.md`
+- `../../skills/signal-graph/SKILL.md`
+- `../runbooks/operator-guide.md`
+- `../architecture/system-overview.md`

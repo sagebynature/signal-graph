@@ -2,85 +2,65 @@
 
 ## Summary
 
-`Signal Graph` V2 is a local, CLI-first **memory and decision-support system** for humans and AI tools.
+`Signal Graph` is a local, CLI-first **memory and decision-support system** for humans and AI tools.
 
-Its job is to preserve owner-scoped facts, actions, artifacts, and corrections with enough provenance to later answer: **what happened, who did it, what evidence existed, and why was a choice made?**
+Its job is to preserve signals, artifact references, actor context, and later corrections with enough provenance to answer:
 
-The current repository still carries a brownfield V1 trading-research workflow, but that is now treated as a superseded legacy lane inside the rewrite workspace.
+- what happened
+- who or what produced the signal
+- what evidence existed at the time
+- why a later recall or explanation points back to that signal
 
 ## The Problem It Solves
 
-People increasingly work across multiple AI tools, machines, and shared artifacts. The hard part is not generating another answer; it is preserving trustworthy context that survives handoffs and can be corrected later.
-
-Common failure modes:
-
-- the same action appears in several noisy forms across tools or devices
-- shared files lose provenance once they are summarized downstream
-- inferred intent is stored as fact without confidence labeling
-- later explanations cannot show which owner, actor, or artifact drove a decision
-- corrective feedback such as “don’t do that again” is not persisted in a deterministic way
-
-Signal Graph V2 is designed to sit between raw AI/tool activity and later retrieval or explanation. It forces the memory chain into visible stages.
+Local work often leaves decisions scattered across terminals, notes, artifacts, and tool sessions. Signal Graph creates a consistent record that can be captured, journaled, recalled, and explained without relying on hidden cloud state.
 
 ## Product Shape
 
-Signal Graph V2 is best understood as a memory loop:
+Signal Graph is intentionally:
 
-`owner + actor identity -> hook/share capture -> append-only events + canonical raw artifacts -> graph/index projections -> retrieval/explanation -> correction/redaction`
-
-That workflow is implemented as explicit CLI and MCP surfaces, local state, and inspectable artifacts so humans and coding agents can operate it the same way.
+- local-first
+- CLI-native
+- provenance-aware
+- graph-backed for journaling and explanation
+- MCP-compatible for host integrations
 
 ## Who It Is For
 
-- A human operator who wants a durable memory layer across AI tools and devices
-- A team using coding agents that need owner-scoped recall and explainable provenance
-- A developer building local memory capture, explanation, or correction workflows
-- A stakeholder evaluating whether the V2 product shape is coherent, bounded, and extensible
+- developers running local agent workflows
+- operators who need explicit runtime/bootstrap contracts
+- humans and AI tools that need trustworthy recall over prior local work
 
 ## Primary Use Cases
 
-### Hook-Driven Memory Capture
+### Signal capture
+Record a structured signal with origin, source, session, and intent metadata.
 
-A human works through Codex, Claude Code, Gemini, or another supported tool and wants pre-action and post-output events captured with explicit owner, actor, and session provenance.
+### Graph journaling
+Convert a captured signal into a graph-backed path that can later be inspected or reused.
 
-### Shared Artifact Recall
+### Recall and explanation
+Query prior signals by phrase, session, source, or runtime and produce deterministic recall artifacts.
 
-A user shares a document or folder and later needs the system to retrieve the share event, raw artifact evidence, and derived interpretations without mutating source truth.
-
-### Explanation Of Prior Decisions
-
-Later, the user asks why a specific approach was chosen. The system returns an explanation shape that links owner, actor, action/decision, provenance chain, evidence refs, and confidence-labeled `why` when present.
-
-### Correction And Redaction
-
-The user says “don’t do that in the future” or requests removal/redaction. The system records a first-class correction artifact and exposes deterministic downstream effects in follow-up retrieval or explanation results.
+### Correction-aware memory
+Preserve raw truth while allowing later interpretation and guidance to improve over time.
 
 ## What Makes It Different
 
-- Owner-scoped memory instead of anonymous transcript dumping
-- Provenance-aware capture instead of summary-first recall
-- Explicit correction/redaction semantics instead of ad hoc prompt tweaking
-- CLI/MCP-native operation instead of hidden UI-only state
-
-## Current Maturity
-
-This repository is an active rewrite workspace. The accepted V2 product decisions are now documented, but implementation is still split between:
-
-- brownfield V1 runtime surfaces that remain operational
-- journal and MCP capabilities that already preserve some provenance-rich recall
-- planned V2 domain/storage/transport work that is still being built inside this repo
+- owner- and actor-aware provenance instead of anonymous transcript dumping
+- local artifacts and inspectable state instead of hidden hosted memory
+- explicit CLI and MCP contracts instead of implicit tool behavior
+- recall artifacts that keep evidence and path context attached
 
 ## What This Cut Does Not Try To Do
 
-- Replace human judgment with opaque autonomous decisions
-- Offer a hardened public multi-tenant HTTP product in the MVP
-- Treat inferred preferences as facts without confirmation
-- Erase or overwrite raw evidence when derived interpretations change
-- Keep the V1 trading-research proposition as the primary product story for V2
+- replace human judgment with opaque autonomous decisions
+- offer a hardened public multi-tenant HTTP product
+- erase raw evidence when interpretation changes
+- preserve unsupported legacy workflow compatibility
 
 ## Read Next
 
-- Landing page: [`../../README.md`](../../README.md)
-- Architecture: [`../architecture/system-overview.md`](../architecture/system-overview.md)
-- Local operation: [`../runbooks/operator-guide.md`](../runbooks/operator-guide.md)
-- Brownfield workflow: [`../runbooks/analyst-agent-guide.md`](../runbooks/analyst-agent-guide.md)
+- `../architecture/system-overview.md`
+- `../runbooks/operator-guide.md`
+- `../integrations/README.md`

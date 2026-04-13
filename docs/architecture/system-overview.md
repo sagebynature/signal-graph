@@ -2,91 +2,62 @@
 
 ## Architecture Summary
 
-`Signal Graph` V2 is a local memory and decision-support architecture with a strict separation between capture surfaces, canonical domain records, storage-of-record boundaries, derived projections, and retrieval/explanation transports.
+Signal Graph is a local memory and decision-support architecture with a strict separation between capture surfaces, persisted journal state, graph journaling, recall artifacts, and MCP transport.
 
 At a high level:
 
-`CLI + MCP transports -> capture/command services -> canonical memory domain -> filesystem/SQLite/graph projections -> retrieval/explanation/correction responses`
-
-The rewrite keeps the repository's CLI-first operating style, but the target architecture is no longer an event-to-trade pipeline. It is an owner-scoped memory system that can later explain prior actions and incorporate corrections without mutating raw truth.
+`CLI + MCP transports -> capture/journal services -> local SQLite state + graph path projection -> recall/explanation artifacts`
 
 ## Major Components
 
-### Capture Surfaces
+### Capture surfaces
+The supported CLI captures and inspects signals through:
 
-The CLI under `src/signal_graph/cli/` and the MCP server entrypoints remain the operating contract for both humans and coding agents. V2 requires the same core memory capabilities to be reachable through stdio and HTTP transports.
+- `capture-signal`
+- `journalize-signal`
+- `recall-signal`
+- `bootstrap-describe`
+- `automation-describe`
 
-### Canonical Memory Domain
+### Local storage of record
+SQLite stores:
 
-The V2 domain distinguishes these first-class records:
+- `journal_signals`
+- `recall_artifacts`
 
-- `Owner`
-- `Actor`
-- `SessionContext`
-- `ActionEvent`
-- `Artifact`
-- `ShareEvent`
-- `DerivedInterpretation`
-- `CorrectionRedaction`
-- optional confidence-labeled `WhyInference`
+These records are the local source of truth for capture and recall flows.
 
-Every AI actor action must link to a human owner.
+### Graph journaling layer
+Journaled signals are projected into Neo4j-backed paths so later explanation and recall output can show where a signal belongs in context.
 
-### Append-Only Event And Artifact Storage
+### Recall and artifact layer
+Recall queries return structured matches plus a markdown artifact that records the query contract, graph paths, and provenance contract.
 
-Raw hook payloads, share events, and source artifacts are preserved canonically. The system of record is append-only for captured events and immutable for raw artifact payloads. Later summaries, topics, or interpretations are stored as separate derived layers.
-
-### Projection And Query Layers
-
-Structured indexes, markdown views, and graph-oriented projections exist to make memory queryable by who, topic, and date. These projections are allowed to change when corrections arrive; the raw event and artifact record is not.
-
-### Explanation And Correction Services
-
-Retrieval and explanation services assemble deterministic response shapes that include owner, actor, queried action/decision, provenance chain, supporting evidence refs, and confidence-labeled `why` when present. Correction/redaction services persist downstream policy changes and make those effects visible on subsequent reads.
-
-### Brownfield V1 Runtime
-
-The existing event/research/rank/memo code remains in the repository as a brownfield reference lane. It is no longer the target product architecture for V2, but it still informs migration constraints and local operational compatibility.
-
-## Storage-Of-Record Split
-
-The favored V2 storage boundary is:
-
-- canonical raw artifacts on disk
-- append-only event envelopes with durable local indexing
-- graph/query projections for relationship traversal and explanation assembly
-- derived markdown or summary views generated from canonical records
-
-This keeps raw source material and append-only capture history stable while allowing query/index layers to evolve.
-
-## MCP Transport Model
-
-Both transports must wrap the same service-layer behavior.
-
-- **stdio** remains the default local/agent integration surface
-- **HTTP** is an MVP convenience transport for trusted environments only
-- schema shape, capability surface, and core error model must remain transport-parity compatible
+### MCP transport model
+Signal Graph exposes a published stdio MCP entrypoint (`signal-graph-mcp`) and an equivalent CLI launch path (`signal-graph mcp-server`). Host validation examples live in `docs/integrations/`.
 
 ## Trust And Provenance Model
 
-The architecture deliberately separates:
+The system deliberately separates:
 
-- owner identity
-- actor identity
-- capture of facts/actions/artifacts
-- derived interpretation
-- confidence-labeled inference
-- correction/redaction policy
+- signal origin
+- source metadata
+- agent or session identity
+- raw text/payload
+- graph path projection
+- recall artifact output
 
-That separation makes it easier to show what is observed, what is inferred, what changed later, and what should no longer be repeated.
+That separation makes it easier to distinguish observed facts from later interpretation.
 
 ## Current Implementation Notes
 
-Today the repo still contains V1-oriented models, services, SQLite state, Neo4j graph logic, and memo artifacts. Those components are brownfield inputs to the rewrite, not the final V2 architecture contract.
+- `signal-graph init` prepares the local project directories and SQLite state.
+- `capture-signal`, `journalize-signal`, and `recall-signal` are the primary supported workflow commands.
+- bootstrap and automation guidance must stay aligned with CLI help and MCP behavior.
+- local Neo4j availability still matters for graph journaling and MCP-backed recall workflows.
 
 ## Read Next
 
-- Landing page: [`../../README.md`](../../README.md)
-- Product context: [`../overview/product.md`](../overview/product.md)
-- Local setup: [`../runbooks/operator-guide.md`](../runbooks/operator-guide.md)
-- Brownfield workflow usage: [`../runbooks/analyst-agent-guide.md`](../runbooks/analyst-agent-guide.md)
+- `../overview/product.md`
+- `../runbooks/operator-guide.md`
+- `../integrations/README.md`

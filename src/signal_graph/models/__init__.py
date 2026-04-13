@@ -1,18 +1,16 @@
 """Canonical domain models for signal_graph."""
 
+from signal_graph.models.automation import (
+    AutomationArtifact,
+    HostAutomationFlow,
+    OperationalAutomationContract,
+)
 from signal_graph.models.bootstrap import (
     BootstrapCommand,
     BootstrapContract,
     BootstrapMcpContract,
     BootstrapStep,
 )
-from signal_graph.models.automation import (
-    AutomationArtifact,
-    HostAutomationFlow,
-    OperationalAutomationContract,
-)
-from signal_graph.models.events import EventCandidate
-from signal_graph.models.graph import MemoResponse, RankedCandidate, GraphEvent
 from signal_graph.models.journal import (
     JournalSignal,
     RecallArtifact,
@@ -22,28 +20,20 @@ from signal_graph.models.journal import (
     RecallResult,
     RecallSessionGroup,
 )
-from signal_graph.models.research import ResearchBundle
-from signal_graph.models.source import RawSourceItem
 
 __all__ = [
+    "AutomationArtifact",
     "BootstrapCommand",
     "BootstrapContract",
     "BootstrapMcpContract",
     "BootstrapStep",
-    "AutomationArtifact",
     "HostAutomationFlow",
-    "OperationalAutomationContract",
-    "EventCandidate",
-    "GraphEvent",
     "JournalSignal",
-    "MemoResponse",
+    "OperationalAutomationContract",
     "RecallArtifact",
     "RecallMatch",
     "RecallMatchExplanation",
     "RecallQuery",
     "RecallResult",
     "RecallSessionGroup",
-    "RankedCandidate",
-    "RawSourceItem",
-    "ResearchBundle",
 ]
